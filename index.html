@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="description" content="Gem Quest - a fast-paced arena survival roguelite. Defeat waves of enemies, collect loot, and conquer 4 themed stages." />
+  <meta name="theme-color" content="#0a0a1a" />
+  <title>Gem Quest - Arena Survival</title>
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>💎</text></svg>" />
+</head>
+<body>
+  <!-- Boot / loading screen shown until the game is ready -->
+  <div id="boot-screen">
+    <div class="boot-title">GEM QUEST</div>
+    <div class="boot-sub">ARENA SURVIVAL</div>
+    <div class="boot-spinner"></div>
+    <div class="boot-text" id="boot-text">Loading...</div>
+    <button class="boot-start" id="boot-start" type="button">CLICK TO START</button>
+  </div>
+
+  <!-- The game container. Sized to a 16:9 letterbox inside the viewport. -->
+  <div id="game-container">
+    <canvas id="game-canvas" tabindex="0"></canvas>
+    <div id="touch-controls" class="hidden">
+      <div id="touch-joystick"><div id="touch-stick"></div></div>
+    </div>
+  </div>
+
+  <!-- CrazyGames SDK loader.
+       The SDK is loaded from the official CDN as required by Crazy Games.
+       The game must work even if the SDK fails to load (graceful degradation). -->
+  <script>
+    window.CrazySDKReady = new Promise((resolve) => {
+      const finish = (sdk) => {
+        window.CrazySDK = sdk || null;
+        window.crazyGamesLoaded = !!(sdk && sdk.sdk);
+        resolve();
+      };
+      // The SDK exposes itself on window.CrazyGames when ready.
+      // We poll briefly then resolve either way so the game can start.
+      let tries = 0;
+      const check = () => {
+        if (window.CrazyGames && window.CrazyGames.sdk) {
+          finish({ sdk: window.CrazyGames.sdk });
+        } else if (tries++ < 30) {
+          setTimeout(check, 200);
+        } else {
+          finish(null);
+        }
+      };
+      const s = document.createElement('script');
+      s.src = 'https://sdk.crazygames.com/GameSDKv3.js';
+      s.async = true;
+      s.onerror = () => finish(null);
+      s.onload = () => check();
+      document.head.appendChild(s);
+      // Start polling in case the script already loaded before this code ran.
+      check();
+    });
+  </script>
+  <script src="js/utils.js"></script>
+  <script src="js/sdk.js"></script>
+  <script src="js/audio.js"></script>
+  <script src="js/input.js"></script>
+  <script src="js/particles.js"></script>
+  <script src="js/sprites.js"></script>
+  <script src="js/assets.js"></script>
+  <script src="js/data.js"></script>
+  <script src="js/player.js"></script>
+  <script src="js/enemies.js"></script>
+  <script src="js/items.js"></script>
+  <script src="js/lootbox.js"></script>
+  <script src="js/stages.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/game.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>

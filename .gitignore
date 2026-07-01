@@ -1,0 +1,26 @@
+# Logs and OS junk
+node_modules/
+*.log
+.DS_Store
+Thumbs.db
+
+# Editor junk
+.vscode/
+.idea/
+
+# Build outputs (none currently, but safe)
+dist/
+build/
+
+# Local-only scripts
+../gen_assets.js
+../dl_assets.ps1
+../dl_one.ps1
+../sync_and_serve.js
+../serve_gemquest.js
+../serve.js
+
+# Boot screen debug screenshots
+../boot*.png
+../boot_*.png
+../menu_*.png
