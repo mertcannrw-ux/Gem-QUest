@@ -538,20 +538,51 @@ const UI = (() => {
       const r = RARITY[it.rarity.toUpperCase()];
       const cx = startX + i * (cw + gap);
       const hover = ctx._hover && pointInRect(ctx._mouse, cx, cardY, cw, ch);
-      // Card with rarity glow
+      // Card with smooth rounded corners, depth gradient, animated glow
+      const CR = 18;
+      // 1) Depth gradient fill with dark drop shadow (lift effect)
       ctx.save();
+      ctx.shadowColor = 'rgba(0,0,0,0.5)';
+      ctx.shadowBlur = 16;
+      ctx.shadowOffsetY = 8;
+      const grad = ctx.createLinearGradient(cx, cardY, cx, cardY + ch);
+      grad.addColorStop(0, hover ? '#3a2d6a' : '#261d4a');
+      grad.addColorStop(1, hover ? '#1a1a2a' : '#0d0d1a');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.roundRect(cx, cardY, cw, ch, CR);
+      ctx.fill();
+      // 2) Border stroke with pulsing rarity glow (same path)
       ctx.shadowColor = r.color;
-      ctx.shadowBlur = hover ? 20 : glowSize;
-      ctx.fillStyle = hover ? '#2a2a4a' : '#1a1a2a';
-      ctx.fillRect(cx, cardY, cw, ch);
-      ctx.shadowBlur = 0;
+      ctx.shadowBlur = hover ? 28 : glowSize;
+      ctx.shadowOffsetY = 0;
       ctx.strokeStyle = r.color;
       ctx.lineWidth = 3;
-      ctx.strokeRect(cx, cardY, cw, ch);
+      ctx.stroke();
       ctx.restore();
-      // Rarity bar
+      // 3) Shimmer sweep (clipped; pauses on hover for readability)
+      if (!hover) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.roundRect(cx, cardY, cw, ch, CR);
+        ctx.clip();
+        const sweep = ((game.time * 80 + i * 160) % 300) / 300;
+        const sx = cx + sweep * 300 - 150;
+        const sg = ctx.createLinearGradient(sx, cardY, sx + 200, cardY + ch);
+        sg.addColorStop(0, 'rgba(255,255,255,0)');
+        sg.addColorStop(0.5, 'rgba(255,255,255,0.07)');
+        sg.addColorStop(1, 'rgba(255,255,255,0)');
+        ctx.fillStyle = sg;
+        ctx.fillRect(cx, cardY, cw, ch);
+        ctx.restore();
+      }
+      // 4) Rarity bar with rounded top corners
+      ctx.save();
+      ctx.beginPath();
+      ctx.roundRect(cx, cardY, cw, 32, [CR, CR, 0, 0]);
       ctx.fillStyle = r.color;
-      ctx.fillRect(cx, cardY, cw, 32);
+      ctx.fill();
+      ctx.restore();
       text(ctx, r.name.toUpperCase(), cx + cw / 2, cardY + 16,
         { align: 'center', baseline: 'middle', font: 'bold 14px sans-serif', stroke: '#000' });
       // Sprite icon (use art if available, fallback to emoji)
