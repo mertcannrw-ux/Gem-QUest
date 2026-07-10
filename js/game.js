@@ -506,8 +506,9 @@ class Game {
     const stage = s ? STAGES[s.index] : STAGES[0];
 
     // ===== Background sky / depth gradient =====
-    if (!this._bgGradient || this._bgStageId !== stage.id) {
+    if (!this._bgGradient || this._bgStageId !== stage.id || this._bgVh !== this.vh) {
       this._bgStageId = stage.id;
+      this._bgVh = this.vh;
       this._bgGradient = ctx.createLinearGradient(0, 0, 0, this.vh);
       if (stage.id === 'forest') {
         this._bgGradient.addColorStop(0, '#0a1a0a');
