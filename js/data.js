@@ -124,7 +124,7 @@ const ITEMS = [
   {
     id: 'tome', name: 'Spell Tome', icon: '📖', rarity: 'epic',
     desc: '+3% projectile size and +15% dmg per stack', maxStacks: 4,
-    stats: { projSize: 0.03, damage: 0.15 }
+    stats: { projSize: 0.03, damageMult: 0.15 }
   },
 
   // ---- Legendary ----
@@ -152,7 +152,7 @@ const ITEMS = [
   {
     id: 'doubler', name: 'Doubler', icon: '✖', rarity: 'common',
     desc: '+8% damage, +8% xp per stack', maxStacks: 4,
-    stats: { damage: 0.08, xpGain: 0.08 }
+    stats: { damageMult: 0.08, xpGain: 0.08 }
   },
   {
     id: 'lifesteal_gem', name: 'Soul Gem', icon: '👁', rarity: 'rare',
@@ -177,7 +177,7 @@ const ITEMS = [
   {
     id: 'voidstone', name: 'Void Stone', icon: '🕳', rarity: 'epic',
     desc: '+15% damage, +10% area per stack', maxStacks: 3,
-    stats: { damage: 0.15, area: 0.10 }
+    stats: { damageMult: 0.15, area: 0.10 }
   },
   {
     id: 'ember', name: 'Ember Wand', icon: '🔥', rarity: 'rare',
@@ -207,12 +207,12 @@ const ITEMS = [
   {
     id: 'phoenix', name: 'Phoenix Feather', icon: '🪶', rarity: 'legendary',
     desc: 'Revive once with 30% HP', maxStacks: 1,
-    stats: { revive: 1, reviveHp: 0.3 }
+    stats: { revive: 1 }
   },
   {
     id: 'glasscannon', name: 'Glass Cannon', icon: '🎯', rarity: 'epic',
     desc: '+25% damage but -10% max HP per stack', maxStacks: 2,
-    stats: { damage: 0.25, maxHp: -0.10 }
+    stats: { damageMult: 0.25, maxHpPercent: -0.10 }
   }
 ];
 

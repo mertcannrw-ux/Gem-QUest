@@ -48,15 +48,13 @@ class Enemy {
     if (!this.boss && killer && killer.kills !== undefined) {
       killer.kills++;
     }
+    if (game?.director) game.director.onEnemyKilled(this, killer);
 
+    const killerStats = killer && typeof killer.stats === 'function' ? killer.stats() : null;
     // Kill heal (Soul Gem)
-    if (killer && killer.items && killer.items.lifesteal_gem) {
-      killer.heal(killer.items.lifesteal_gem * killer.stats().killHeal);
-    }
+    if (killerStats && killerStats.killHeal > 0) killer.heal(killerStats.killHeal);
     // Meteor chance
-    if (killer && killer.items && killer.items.meteor
-        && Math.random() < killer.items.meteor * 0.05
-        && game) {
+    if (killerStats && killerStats.meteor > 0 && Math.random() < killerStats.meteor && game) {
       game.particles.spawnRing(this.x, this.y, '#fb923c', 60);
       game.shake.trigger(3);
       // AoE damage
@@ -69,21 +67,24 @@ class Enemy {
     }
 
     // Explosion (Bomb item)
-    const ps = this.size * (1 + (killer && killer.items ? killer.items.bomb || 0 : 0) * 0.5);
-    if (ps > 20) {
+    const explode = killerStats ? killerStats.explode : 0;
+    if (explode > 0) {
       Audio.explosion();
       game.shake.trigger(6);
-      game.particles.spawnRing(this.x, this.y, '#fbbf24', this.size * 1.2);
-      // Chain damage to nearby enemies
+      const radius = this.size * (1 + explode);
+      game.particles.spawnRing(this.x, this.y, '#fbbf24', radius);
+      const dmg = 20 * (1 + explode);
       for (const e of game.enemies) {
         if (e === this || !e.alive) continue;
-        if (Utils.distO(e, this) < this.size * 1.2) {
-          e.takeDamage(20, killer, game);
+        if (Utils.distO(e, this) < radius) {
+          e.takeDamage(dmg, killer, game);
         }
       }
     }
     // Drop XP
-    ITEMS_RUNTIME.spawnGem(this.x + Utils.range(-6, 6), this.y + Utils.range(-6, 6), this.xp);
+    if (this.xp > 0) {
+      ITEMS_RUNTIME.spawnGem(this.x + Utils.range(-6, 6), this.y + Utils.range(-6, 6), this.xp);
+    }
     // Drop coin
     if (this.coin > 0) {
       ITEMS_RUNTIME.spawnCoin(this.x + Utils.range(-6, 6), this.y + Utils.range(-6, 6), this.coin);
@@ -95,9 +96,7 @@ class Enemy {
       game.particles.spawnBurst(this.x, this.y, '#fbbf24', 50, 300);
       game.onBossKill(this);
     }
-    if (killer && killer.items && killer.items.vampire) {
-      killer.heal(killer.items.vampire);
-    }
+    if (killerStats && killerStats.lifesteal > 0) killer.heal(killerStats.lifesteal);
   }
 
   applyEffect(eff) {
@@ -125,9 +124,15 @@ class Enemy {
         const s = this.poisonStacks[i];
         this.hp -= s.dmg * dt;
         s.t -= dt;
-        if (s.t <= 0) this.poisonStacks.splice(i, 1);
+        if (s.t <= 0) {
+          this.poisonStacks[i] = this.poisonStacks[this.poisonStacks.length - 1];
+          this.poisonStacks.pop();
+        }
       }
-      if (this.hp <= 0) this.die(game.player, game);
+      if (this.hp <= 0) {
+        this.die(game.player, game);
+        return;
+      }
     }
 
     // Burn DoT
@@ -136,9 +141,15 @@ class Enemy {
         const s = this.burnStacks[i];
         this.hp -= s.dmg * dt;
         s.t -= dt;
-        if (s.t <= 0) this.burnStacks.splice(i, 1);
+        if (s.t <= 0) {
+          this.burnStacks[i] = this.burnStacks[this.burnStacks.length - 1];
+          this.burnStacks.pop();
+        }
       }
-      if (this.hp <= 0) this.die(game.player, game);
+      if (this.hp <= 0) {
+        this.die(game.player, game);
+        return;
+      }
     }
 
     const p = game.player;
@@ -147,9 +158,8 @@ class Enemy {
     this.angle = Math.atan2(dy, dx);
 
     const slow = 1 - this.slowAmount;
-    const enemySlow = 1 - (p && p.items && p.items.hourglass
-      ? p.items.hourglass * 0.10 : 0);
-    const effectiveSpeed = this.speed * slow * enemySlow;
+    const enemySlow = p ? Utils.clamp(p.stats().enemySlow, 0, 0.8) : 0;
+    const effectiveSpeed = this.speed * slow * (1 - enemySlow);
 
     // Behaviour
     switch (this.ai) {
@@ -209,7 +219,11 @@ class Enemy {
 
     // Hit player on contact
     if (d < this.size * 0.6 + p.r && this.dmg > 0) {
+      const wasInvulnerable = p.invuln > 0;
       p.takeDamage(this.dmg, this.x, this.y);
+      if (this.elite?.id === 'vampiric' && !wasInvulnerable) {
+        this.hp = Math.min(this.maxHp, this.hp + this.maxHp * 0.035);
+      }
     }
   }
 
@@ -323,6 +337,22 @@ class Enemy {
     const sx = this.x - cam.x, sy = this.y - cam.y;
     if (sx < -100 || sy < -100 || sx > cam.vw + 100 || sy > cam.vh + 100) return;
 
+    // Elite aura and bounty readability are drawn before the body.
+    if (this.elite) {
+      const pulse = 1 + Math.sin(performance.now() * 0.006 + this._wob) * 0.12;
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.strokeStyle = this.elite.color;
+      ctx.lineWidth = this.elite.id === 'bulwark' ? 5 : 3;
+      ctx.globalAlpha = 0.55;
+      ctx.shadowColor = this.elite.color;
+      ctx.shadowBlur = 14;
+      ctx.beginPath();
+      ctx.arc(sx, sy, this.size * 0.78 * pulse, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+
     // Soft shadow
     const shadowR = this.size * (this.boss ? 0.8 : 0.5);
     ctx.fillStyle = 'rgba(0,0,0,0.4)';
@@ -378,6 +408,21 @@ class Enemy {
       ctx.strokeStyle = this.outline;
       ctx.lineWidth = 2;
       ctx.stroke();
+    }
+
+    if ((this.elite || this.isBounty) && !this.boss) {
+      const bw = Math.max(34, this.size * 1.4);
+      const by = sy - this.size - 16;
+      ctx.fillStyle = 'rgba(3,7,18,0.85)';
+      ctx.fillRect(sx - bw / 2 - 1, by - 1, bw + 2, 6);
+      ctx.fillStyle = this.isBounty ? '#f472b6' : this.elite.color;
+      ctx.fillRect(sx - bw / 2, by, bw * Math.max(0, this.hp / this.maxHp), 4);
+      if (this.elite) {
+        ctx.fillStyle = this.elite.color;
+        ctx.font = 'bold 9px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(this.elite.name, sx, by - 4);
+      }
     }
   }
 }
@@ -440,6 +485,12 @@ class Projectile {
           if (this.poison) e.applyEffect({ poison: this.poison, poisonDur: this.poisonDur });
           if (this.slow)   e.applyEffect({ slow: this.slow, slowDur: this.slowDur });
           if (this.burn)   e.applyEffect({ burn: this.burn, burnDur: this.burnDur });
+          if (game.director?.hasSynergy('frostfire') && this.burn && e.slowAmount > 0) {
+            const shatter = this.dmg * 0.55;
+            e.takeDamage(shatter, this.owner, game);
+            game.particles.spawnRing(e.x, e.y, '#a5f3fc', 42);
+            game.particles.spawnSparkBurst(e.x, e.y, '#fb923c', 10);
+          }
           if (this.crit)   game.particles.spawnCrit(this.x, this.y - 12,
                               Math.floor(this.dmg) + '!');
           else             game.particles.spawnFloat(this.x, this.y - 12,
@@ -495,14 +546,11 @@ class Projectile {
     if (this.slow) sid = 'proj_frost';
     if (this.kind === 'ember') sid = 'proj_ember';
     if (this.kind === 'void') sid = 'proj_void';
+    if (this.kind === 'storm') sid = 'proj_frost';
     if (Sprite.has(sid)) {
       const s = Sprite.get(sid);
       const scale = Math.max(0.6, (this.size || 4) / 6);
       const ang = Math.atan2(this.vy, this.vx);
-      // Compute trail: spawn occasional spark
-      if (Math.random() < 0.4) {
-        // (We do this via game.particles in the game loop, not here.)
-      }
       ctx.save();
       ctx.translate(sx, sy);
       ctx.rotate(ang);

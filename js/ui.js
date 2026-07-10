@@ -29,18 +29,33 @@ const UI = (() => {
   // ===== Buttons =====
 
   function button(ctx, x, y, w, h, label, onClick, opts = {}) {
+    const disabled = Boolean(opts.disabled);
     const hover = ctx._hover && pointInRect(ctx._mouse, x, y, w, h);
-    ctx.fillStyle = opts.bg || (hover ? '#3a3a5a' : '#1a1a2a');
-    ctx.fillRect(x, y, w, h);
-    ctx.strokeStyle = opts.border || '#7af0ff';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(x, y, w, h);
+    ctx.save();
+    if (hover && !disabled) {
+      ctx.shadowColor = opts.border || '#67e8f9';
+      ctx.shadowBlur = 18;
+    }
+    const g = ctx.createLinearGradient(x, y, x, y + h);
+    g.addColorStop(0, disabled ? '#171722' : (opts.bg || (hover ? '#3b2d69' : '#211a43')));
+    g.addColorStop(1, disabled ? '#0d0d15' : '#0b0d20');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.roundRect(x, y, w, h, 8);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = disabled ? '#475569' : (opts.border || '#67e8f9');
+    ctx.lineWidth = hover ? 3 : 2;
+    ctx.stroke();
+    ctx.fillStyle = disabled ? '#475569' : (opts.border || '#67e8f9');
+    ctx.fillRect(x + 10, y + 6, w - 20, 2);
+    ctx.restore();
     text(ctx, label, x + w / 2, y + h / 2, {
       align: 'center', baseline: 'middle',
       font: opts.font || 'bold 18px sans-serif',
-      color: opts.color || '#fff'
+      color: disabled ? '#94a3b8' : (opts.color || '#fff')
     });
-    buttons.push({ x, y, w, h, onClick, hover });
+    if (!disabled) buttons.push({ x, y, w, h, onClick, hover });
   }
 
   function pointInRect(p, x, y, w, h) {
@@ -128,60 +143,19 @@ const UI = (() => {
 
   // ===== Main Menu =====
   function drawMainMenu(ctx, game) {
-    // Background: AI-generated art (parallax-friendly) with a
-    // graceful fallback to the procedural gradient + stars.
-    const menuBg = Assets.has('menu_bg') ? Assets.get('menu_bg') : null;
-    if (menuBg) {
-      // Cover-fit: scale to fill the canvas, center-cropped.
-      const ar = menuBg.width / menuBg.height;
-      const car = ctx.canvas.width / ctx.canvas.height;
-      let dw, dh;
-      if (ar > car) { dh = ctx.canvas.height; dw = dh * ar; }
-      else          { dw = ctx.canvas.width;  dh = dw / ar; }
-      const dx = (ctx.canvas.width - dw) / 2;
-      const dy = (ctx.canvas.height - dh) / 2;
-      ctx.drawImage(menuBg, dx, dy, dw, dh);
-      // Soft top + bottom dark gradient for legibility.
-      const grad = ctx.createLinearGradient(0, 0, 0, ctx.canvas.height);
-      grad.addColorStop(0,   'rgba(10,10,26,0.55)');
-      grad.addColorStop(0.4, 'rgba(10,10,26,0.10)');
-      grad.addColorStop(0.7, 'rgba(10,10,26,0.25)');
-      grad.addColorStop(1,   'rgba(10,10,26,0.75)');
-      ctx.fillStyle = grad;
-      ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
-    } else {
-      // Fallback: gradient + stars
-      const grad = ctx.createLinearGradient(0, 0, 0, ctx.canvas.height);
-      grad.addColorStop(0, '#1a0a3a');
-      grad.addColorStop(1, '#0a0a1a');
-      ctx.fillStyle = grad;
-      ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
-      for (let i = 0; i < 80; i++) {
-        const x = (i * 137) % ctx.canvas.width;
-        const y = (i * 53) % ctx.canvas.height;
-        const tw = 0.4 + Math.sin(game.time * 2 + i) * 0.4;
-        ctx.fillStyle = `rgba(255,255,255,${0.4 + tw * 0.4})`;
-        ctx.fillRect(x, y, 2, 2);
-        if (tw > 0.6) {
-          ctx.fillStyle = `rgba(122,240,255,${tw * 0.5})`;
-          ctx.fillRect(x - 1, y - 1, 4, 4);
-        }
-      }
-    }
-
     // Title with glow pulse
-    const titleY = ctx.canvas.height * 0.18;
+    const titleY = 42;
     const pulse = 8 + Math.sin(game.time * 3) * 4;
     ctx.save();
     ctx.shadowColor = '#fbbf24';
     ctx.shadowBlur = pulse;
     text(ctx, 'GEM QUEST', ctx.canvas.width / 2, titleY, {
-      align: 'center', font: 'bold 72px sans-serif',
-      stroke: '#000', color: '#ffd84a'
+      align: 'center', font: '900 76px Trebuchet MS',
+      stroke: '#12051f', lineWidth: 8, color: '#fef3c7'
     });
     ctx.restore();
     text(ctx, 'ARENA SURVIVAL', ctx.canvas.width / 2, titleY + 70, {
-      align: 'center', font: 'bold 22px sans-serif', color: '#7af0ff', stroke: '#000'
+      align: 'center', font: 'bold 18px Trebuchet MS', color: '#67e8f9', stroke: '#000'
     });
 
     // Decorative gems around title
@@ -202,8 +176,17 @@ const UI = (() => {
       }
     }
 
-    const bw = 260, bh = 56, gap = 18;
-    let by = ctx.canvas.height * 0.45;
+    // Dark glass control panel keeps the dramatic focal gem visible.
+    const panelX = cx - 205, panelY = 350, panelW = 410, panelH = 342;
+    const pg = ctx.createLinearGradient(panelX, panelY, panelX, panelY + panelH);
+    pg.addColorStop(0, 'rgba(21,18,52,.92)');
+    pg.addColorStop(1, 'rgba(4,7,19,.96)');
+    ctx.fillStyle = pg;
+    ctx.beginPath(); ctx.roundRect(panelX, panelY, panelW, panelH, 18); ctx.fill();
+    ctx.strokeStyle = 'rgba(103,232,249,.45)'; ctx.lineWidth = 2; ctx.stroke();
+
+    const bw = 260, bh = 48, gap = 12;
+    let by = 370;
     if (game.run.totalCoins > 0) {
       button(ctx, cx - bw / 2, by, bw, bh, 'CONTINUE', () => game.continueRun());
       by += bh + gap;
@@ -212,10 +195,10 @@ const UI = (() => {
     by += bh + gap;
 
     // Stage select (only show unlocked stages)
-    by += 10;
+    by += 2;
     text(ctx, '— STAGES —', cx, by, { align: 'center', font: 'bold 14px sans-serif', color: '#7af0ff' });
     by += 24;
-    const sw = 80, sh = 60;
+    const sw = 72, sh = 52;
     for (let i = 0; i < STAGES.length; i++) {
       const unlocked = i === 0 || game.run.maxStageReached >= i;
       const x = cx - (STAGES.length * (sw + 10) - 10) / 2 + i * (sw + 10);
@@ -237,12 +220,10 @@ const UI = (() => {
         text(ctx, STAGES[i].name, x + sw / 2, by + sh - 8,
           { align: 'center', font: '9px sans-serif', color: '#cbd5e1' });
         ctx.restore();
-        if (hover) {
-          UI.buttons.push({
-            x, y: by, w: sw, h: sh,
-            onClick: () => game.startNewRun(i)
-          });
-        }
+        buttons.push({
+          x, y: by, w: sw, h: sh,
+          onClick: () => game.startNewRun(i)
+        });
       } else {
         ctx.fillStyle = '#1a1a2a';
         ctx.fillRect(x, by, sw, sh);
@@ -253,14 +234,14 @@ const UI = (() => {
       }
     }
 
-    by += sh + 24;
+    by += sh + 14;
     // Settings row
     const sBtnW = 140;
     button(ctx, cx - sBtnW - 5, by, sBtnW, 40, Audio.isMuted() ? 'UNMUTE' : 'MUTE',
       () => { Audio.setMuted(!Audio.isMuted()); });
     button(ctx, cx + 5, by, sBtnW, 40, 'HOW TO PLAY', () => game.showHelp());
 
-    by += 60;
+    by += 48;
     if (game.run.totalCoins > 0) {
       drawCoinIcon(ctx, cx - 70, by - 2, 2);
       text(ctx, Utils.formatNum(game.run.totalCoins),
@@ -268,7 +249,7 @@ const UI = (() => {
     }
 
     // Footer
-    text(ctx, 'v1.0  •  Move: WASD/ZQSD  •  Mouse aims  •  Auto-attack',
+    text(ctx, 'v2.0  •  MOVE WASD/ZQSD  •  SPACE DASH  •  E ARCANE NOVA',
       ctx.canvas.width / 2, ctx.canvas.height - 24,
       { align: 'center', font: '12px sans-serif', color: '#7af0ff' });
   }
@@ -293,7 +274,7 @@ const UI = (() => {
     ];
     let y = 160;
     for (const l of lines) {
-      text(ctx, l, cx, y, { align: 'center', font: '18px sans-serif', color: l === '' ? '#fff' : '#fff' });
+      text(ctx, l, cx, y, { align: 'center', font: '18px sans-serif', color: '#fff' });
       y += 32;
     }
     button(ctx, cx - 80, ctx.canvas.height - 80, 160, 44, 'GOT IT', () => game.closeHelp(),
@@ -446,6 +427,91 @@ const UI = (() => {
       ctx.fillRect(jx - 25, jy - 25, 50, 50);
       ctx.restore();
     }
+
+    // Bottom-center action deck.
+    const dashReady = p.dashCooldown <= 0;
+    const charge = game.director.overdrive;
+    abilitySlot(ctx, w / 2 - 108, h - 76, 96, 54, 'SPACE', 'RIFT DASH',
+      dashReady ? 1 : 1 - p.dashCooldown / 3.1, '#67e8f9', dashReady);
+    abilitySlot(ctx, w / 2 + 12, h - 76, 96, 54, 'E', 'ARCANE NOVA',
+      charge / 35, '#e879f9', charge >= 35);
+
+    if (game.director.combo > 1) {
+      const scale = 1 + Math.min(0.25, game.director.combo * 0.006);
+      ctx.save();
+      ctx.translate(w / 2, 112);
+      ctx.scale(scale, scale);
+      text(ctx, `${game.director.combo}x COMBO`, 0, 0, {
+        align: 'center', font: '900 28px Trebuchet MS',
+        color: game.director.combo >= 20 ? '#fde047' : '#f0abfc', stroke: '#14051e', lineWidth: 6
+      });
+      ctx.restore();
+      const comboW = 180;
+      ctx.fillStyle = 'rgba(3,7,18,.75)'; ctx.fillRect(w / 2 - comboW / 2, 146, comboW, 5);
+      ctx.fillStyle = '#f0abfc';
+      ctx.fillRect(w / 2 - comboW / 2, 146, comboW * Math.max(0, game.director.comboTimer / 5), 5);
+    }
+
+    if (game.director.activeEvent) {
+      text(ctx, `${game.director.activeEvent.name}  ${game.director.eventDuration.toFixed(1)}s`,
+        w / 2, 174, { align: 'center', font: 'bold 14px Trebuchet MS',
+          color: game.director.activeEvent.color, stroke: '#030712', lineWidth: 5 });
+    }
+
+    if (game.director.synergies.length) {
+      let sy = 88;
+      for (const link of game.director.synergies.slice(0, 3)) {
+        text(ctx, `◆ ${link.name}`, 20, sy, {
+          font: 'bold 11px Trebuchet MS', color: link.color, stroke: '#030712', lineWidth: 4
+        });
+        sy += 18;
+      }
+    }
+  }
+
+  function abilitySlot(ctx, x, y, w, h, key, name, ratio, color, ready) {
+    ratio = Utils.clamp(ratio, 0, 1);
+    ctx.fillStyle = 'rgba(3,7,18,.88)';
+    ctx.beginPath(); ctx.roundRect(x, y, w, h, 8); ctx.fill();
+    ctx.strokeStyle = ready ? color : '#475569'; ctx.lineWidth = ready ? 2 : 1; ctx.stroke();
+    ctx.fillStyle = ready ? color : '#94a3b8';
+    ctx.font = '900 17px Trebuchet MS'; ctx.textAlign = 'center';
+    ctx.fillText(key, x + w / 2, y + 22);
+    ctx.font = 'bold 9px Trebuchet MS';
+    ctx.fillText(name, x + w / 2, y + 38);
+    ctx.fillStyle = '#111827'; ctx.fillRect(x + 8, y + h - 8, w - 16, 4);
+    ctx.fillStyle = color; ctx.fillRect(x + 8, y + h - 8, (w - 16) * ratio, 4);
+  }
+
+  function drawDirectorOverlay(ctx, game) {
+    const d = game.director;
+    if (d.flash > 0) {
+      ctx.save();
+      ctx.globalAlpha = Math.min(.22, d.flash);
+      ctx.fillStyle = d.flashColor;
+      ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+      ctx.restore();
+    }
+    if (d.banner && d.bannerTime > 0) {
+      const fade = Math.min(1, d.bannerTime * 2);
+      const y = 218;
+      ctx.save();
+      ctx.globalAlpha = fade;
+      const grad = ctx.createLinearGradient(260, 0, 1020, 0);
+      grad.addColorStop(0, 'rgba(3,7,18,0)');
+      grad.addColorStop(.25, 'rgba(3,7,18,.88)');
+      grad.addColorStop(.75, 'rgba(3,7,18,.88)');
+      grad.addColorStop(1, 'rgba(3,7,18,0)');
+      ctx.fillStyle = grad; ctx.fillRect(220, y - 18, 840, 86);
+      text(ctx, d.banner.kicker, 640, y, {
+        align: 'center', font: 'bold 12px Trebuchet MS', color: d.banner.color
+      });
+      text(ctx, d.banner.title, 640, y + 25, {
+        align: 'center', font: '900 30px Trebuchet MS',
+        color: '#fff', stroke: '#030712', lineWidth: 7
+      });
+      ctx.restore();
+    }
   }
 
   // ===== Level Up =====
@@ -560,7 +626,7 @@ const UI = (() => {
     text(ctx, stage.name, ctx.canvas.width / 2, 140,
       { align: 'center', font: '20px sans-serif', color: stage.bg.accent });
     const p = game.player;
-    const _seStr = 'Earned: ' + Utils.formatNum(p.coins);
+    const _seStr = 'Balance: ' + Utils.formatNum(p.coins);
     ctx.font = '20px sans-serif';
     drawCoinIcon(ctx, ctx.canvas.width / 2 - ctx.measureText(_seStr).width / 2 - 22, 198, 2);
     text(ctx, _seStr,
@@ -650,10 +716,11 @@ const UI = (() => {
       }
     }
 
-    // Continue button
+    // Return to the screen that opened the shop. Opening the shop after a
+    // boss must not accidentally resume a completed stage.
     const bw = 240, bh = 56;
     const cx = ctx.canvas.width / 2;
-    button(ctx, cx - bw / 2, ctx.canvas.height - 90, bw, bh, 'CONTINUE',
+    button(ctx, cx - bw / 2, ctx.canvas.height - 90, bw, bh, 'BACK',
       () => game.closeShop(), { font: 'bold 20px sans-serif' });
   }
 
@@ -668,7 +735,7 @@ const UI = (() => {
       ctx.canvas.width / 2, 200, { align: 'center', font: '20px sans-serif', color: '#fff' });
     text(ctx, 'Level ' + p.level + '  •  ' + p.kills + ' kills',
       ctx.canvas.width / 2, 240, { align: 'center', font: '18px sans-serif', color: '#7af0ff' });
-    const _goStr = '+' + Utils.formatNum(p.coins) + ' coins earned';
+    const _goStr = Utils.formatNum(p.coins) + ' coins';
     ctx.font = '20px sans-serif';
     drawCoinIcon(ctx, ctx.canvas.width / 2 - ctx.measureText(_goStr).width / 2 - 22, 278, 2);
     text(ctx, _goStr,
@@ -676,8 +743,16 @@ const UI = (() => {
 
     const bw = 220, bh = 54;
     const cx = ctx.canvas.width / 2;
-    button(ctx, cx - bw / 2, 360, bw, bh, 'RETRY', () => game.startNewRun(game.stage.index));
-    button(ctx, cx - bw / 2, 430, bw, bh, 'MAIN MENU', () => game.toMenu());
+    let buttonY = 340;
+    if (!game.reviveUsed && SDK.isAvailable()) {
+      button(ctx, cx - bw / 2, buttonY, bw, bh,
+        game.adPending ? 'LOADING AD...' : 'REVIVE (WATCH AD)',
+        () => { if (!game.adPending) game.reviveFromAd(); },
+        { color: '#ffd84a', border: '#ffd84a', disabled: game.adPending });
+      buttonY += 70;
+    }
+    button(ctx, cx - bw / 2, buttonY, bw, bh, 'RETRY', () => game.startNewRun(game.stage.index));
+    button(ctx, cx - bw / 2, buttonY + 70, bw, bh, 'MAIN MENU', () => game.toMenu());
   }
 
   // ===== Pause =====
@@ -741,7 +816,7 @@ const UI = (() => {
 
   return {
     drawMainMenu, drawHelp, drawHUD, drawLevelUp,
-    drawStageComplete, drawShop, drawGameOver, drawPause, drawVictory,
+    drawStageComplete, drawShop, drawGameOver, drawPause, drawVictory, drawDirectorOverlay,
     handleClick, clearButtons, text, button,
     get buttons() { return buttons; }
   };

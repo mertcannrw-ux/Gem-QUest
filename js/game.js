@@ -5,6 +5,14 @@
  * rate (144/165 Hz supported) using delta time.
  */
 
+function compactAlive(arr, keep) {
+  let w = 0;
+  for (let i = 0; i < arr.length; i++) {
+    if (keep(arr[i])) arr[w++] = arr[i];
+  }
+  arr.length = w;
+}
+
 class Game {
   constructor(canvas) {
     this.canvas = canvas;
@@ -26,12 +34,14 @@ class Game {
     // Game state
     this.state = 'menu'; // menu | help | playing | levelup | stagecomplete | shop | gameover | victory | paused
     this.previousState = 'menu';
+    this.shopReturnState = 'stagecomplete';
     this.time = 0;
 
     // Persistent meta
     this.run = {
       totalCoins: 0,
-      maxStageReached: 0
+      maxStageReached: 0,
+      shopLevels: {}
     };
 
     // World state
@@ -42,8 +52,12 @@ class Game {
     this.enemyProjectiles = [];
     this.lootboxes = [];
     this.particles = new ParticleSystem(1500);
+    this.director = new RunDirector(this);
 
     this.levelUpChoices = null;
+    this.pendingLevelUps = 0;
+    this.reviveUsed = false;
+    this.adPending = false;
 
     // Resize
     this.resize();
@@ -90,35 +104,42 @@ class Game {
   // ===== State management =====
   toMenu() {
     SDK.gameplayStop();
+    this.syncMetaFromPlayer();
+    void this.persistMeta();
     this.state = 'menu';
   }
   showHelp() { this.state = 'help'; }
   closeHelp() { this.state = 'menu'; }
-  resume() { this.state = this.previousState || 'playing'; }
-  openShop() { this.state = 'shop'; SDK.gameplayStop(); }
+  resume() {
+    this.state = this.previousState || 'playing';
+    if (this.state === 'playing') SDK.gameplayStart();
+  }
+  openShop() {
+    this.shopReturnState = this.state;
+    this.state = 'shop';
+    SDK.gameplayStop();
+  }
   closeShop() {
-    this.state = 'playing';
-    SDK.gameplayStart();
+    this.state = this.shopReturnState || 'stagecomplete';
+    if (this.state === 'playing') SDK.gameplayStart();
   }
 
   startNewRun(stageIndex = 0, newGamePlus = false) {
     Audio.resume();
-    if (!newGamePlus) this.player = null;
-    if (!this.player) {
-      this.player = new Player(0, 0);
-      // Persist coins and shop levels from meta
-      this.player.totalCoins = this.run.totalCoins;
-    } else {
-      // New Game+: reset stage/level but keep items? For simplicity, just reset.
-      this.player = new Player(0, 0);
-    }
-    this.player.coins = 0;
+    this.player = new Player(0, 0);
+    // Permanent currency and upgrades carry into every run.
+    this.player.totalCoins = this.run.totalCoins;
+    this.player.shopLevels = { ...this.run.shopLevels };
+    this.player.coins = this.run.totalCoins;
+    this.reviveUsed = false;
+    this.adPending = false;
     this.enemies.length = 0;
     this.projectiles.length = 0;
     this.enemyProjectiles.length = 0;
     this.lootboxes.length = 0;
     ITEMS_RUNTIME.clear();
     this.particles.clear();
+    this.director.reset();
     this.stage = new StageManager(this);
     this.stage.startStage(stageIndex);
     this.state = 'playing';
@@ -137,6 +158,8 @@ class Game {
     const next = this.stage.index + 1;
     if (next >= STAGES.length) return this.finishRun();
     this.run.maxStageReached = Math.max(this.run.maxStageReached, next);
+    this.syncMetaFromPlayer();
+    this.persistMeta();
     this.stage.startStage(next);
     this.state = 'playing';
     SDK.gameplayStart();
@@ -144,7 +167,8 @@ class Game {
 
   finishRun() {
     this.state = 'victory';
-    this.run.totalCoins = this.player.totalCoins;
+    this.syncMetaFromPlayer();
+    SDK.gameplayStop();
     SDK.happyTime();
     this.persistMeta();
   }
@@ -160,14 +184,40 @@ class Game {
       return;
     }
     this.player.coins -= cost;
+    this.player.totalCoins = Math.max(0, this.player.totalCoins - cost);
     this.player.shopLevels[u.id] = lvl + 1;
+    this.run.shopLevels = { ...this.player.shopLevels };
+    this.syncMetaFromPlayer();
+    this.persistMeta();
     Audio.coinLot();
   }
 
-  onPlayerLevelUp() {
+  onPlayerLevelUp(levelsGained = 1) {
+    const count = Math.max(1, Math.floor(Number(levelsGained) || 1));
     Audio.levelUp();
-    this.player.onLeveledUp();
+    for (let i = 0; i < count; i++) this.player.onLeveledUp();
+    this.pendingLevelUps += count;
+    this.presentLevelUpChoice();
+  }
+
+  presentLevelUpChoice() {
+    if (this.pendingLevelUps <= 0) {
+      this.levelUpChoices = null;
+      this.state = 'playing';
+      SDK.gameplayStart();
+      return;
+    }
     this.levelUpChoices = pickItemRewards(this.player.items, 3);
+    if (!this.levelUpChoices.length) {
+      const fallbackCoins = 25 * this.pendingLevelUps;
+      this.player.addCoins(fallbackCoins);
+      this.particles.spawnFloat(this.player.x, this.player.y - 30,
+        `+${fallbackCoins} coins (all items maxed)`, '#ffd84a');
+      this.pendingLevelUps = 0;
+      this.state = 'playing';
+      SDK.gameplayStart();
+      return;
+    }
     this.state = 'levelup';
     SDK.gameplayStop();
     // Big visual feedback
@@ -185,7 +235,7 @@ class Game {
     this.lootboxes.push(lb);
     // Award reward
     this.player.addCoins(stage.reward.coins);
-    game.particles.spawnFloat(boss.x, boss.y - 30,
+    this.particles.spawnFloat(boss.x, boss.y - 30,
       '+' + stage.reward.coins + ' coins', '#ffd84a');
     // Mark boss killed - stage complete check
     this.stage.bossKilled = true;
@@ -213,7 +263,11 @@ class Game {
                   this.state = 'stagecomplete';
                   SDK.gameplayStop();
                   this.run.totalCoins = this.player.totalCoins;
-                  this.run.maxStageReached = Math.max(this.run.maxStageReached, this.stage.index);
+                  this.run.maxStageReached = Math.max(
+                    this.run.maxStageReached,
+                    Math.min(this.stage.index + 1, STAGES.length - 1)
+                  );
+                  this.syncMetaFromPlayer();
                   this.persistMeta();
                 }
               }, 100);
@@ -225,7 +279,7 @@ class Game {
     }
     if (this.state === 'levelup') {
       if (this.levelUpChoices) {
-        const cw = 180, ch = 240, gap = 18;
+        const cw = 200, ch = 280, gap = 24;
         const totalW = cw * this.levelUpChoices.length + gap * (this.levelUpChoices.length - 1);
         const startX = this.vw / 2 - totalW / 2;
         const cardY = 170;
@@ -237,8 +291,8 @@ class Game {
             Audio.levelUp();
             this.particles.spawnBurst(this.vw / 2, cardY + ch / 2, RARITY[it.rarity.toUpperCase()].color, 30, 250);
             this.levelUpChoices = null;
-            this.state = 'playing';
-            SDK.gameplayStart();
+            this.pendingLevelUps = Math.max(0, this.pendingLevelUps - 1);
+            this.presentLevelUpChoice();
             return;
           }
         }
@@ -266,8 +320,53 @@ class Game {
   }
 
   async persistMeta() {
-    await SDK.save('totalCoins', this.run.totalCoins);
-    await SDK.save('maxStageReached', this.run.maxStageReached);
+    await SDK.save('saveData', {
+      version: 1,
+      totalCoins: Math.max(0, Math.floor(this.run.totalCoins || 0)),
+      maxStageReached: Utils.clamp(Math.floor(this.run.maxStageReached || 0), 0, STAGES.length - 1),
+      shopLevels: this.sanitizeShopLevels(this.run.shopLevels)
+    });
+  }
+
+  sanitizeShopLevels(levels) {
+    const clean = {};
+    for (const upgrade of SHOP_UPGRADES) {
+      clean[upgrade.id] = Utils.clamp(Math.floor(Number(levels?.[upgrade.id]) || 0), 0, upgrade.max);
+    }
+    return clean;
+  }
+
+  syncMetaFromPlayer() {
+    if (!this.player) return;
+    this.run.totalCoins = Math.max(0, Math.floor(this.player.totalCoins || 0));
+    this.run.shopLevels = this.sanitizeShopLevels(this.player.shopLevels);
+  }
+
+  async reviveFromAd() {
+    if (this.state !== 'gameover' || this.reviveUsed || this.adPending || !this.player) return;
+    this.adPending = true;
+    const wasMuted = Audio.isMuted();
+    const result = await SDK.showAdRewarded({
+      onStarted: () => {
+        SDK.gameplayStop();
+        Audio.setMuted(true);
+      },
+      onFinished: () => Audio.setMuted(wasMuted),
+      onError: () => Audio.setMuted(wasMuted)
+    });
+    this.adPending = false;
+    if (!result.completed || this.state !== 'gameover') return;
+    if (this.player.revive(0.5)) {
+      this.reviveUsed = true;
+      this.enemyProjectiles.length = 0;
+      this.enemies = this.enemies.filter((enemy) =>
+        Utils.dist2(enemy.x, enemy.y, this.player.x, this.player.y) > 180 * 180
+      );
+      this.particles.spawnRing(this.player.x, this.player.y, '#7af0ff', 90);
+      this.particles.spawnBurst(this.player.x, this.player.y, '#7af0ff', 35, 240);
+      this.state = 'playing';
+      SDK.gameplayStart();
+    }
   }
 
   // ===== Main loop =====
@@ -309,17 +408,19 @@ class Game {
 
       // Enemies
       for (const e of this.enemies) e.update(dt, this);
-      this.enemies = this.enemies.filter(e => e.alive);
+      compactAlive(this.enemies, e => e.alive);
       // Projectiles
       for (const p of this.projectiles) p.update(dt, this);
-      this.projectiles = this.projectiles.filter(p => !p.dead);
+      compactAlive(this.projectiles, p => !p.dead);
       for (const p of this.enemyProjectiles) p.update(dt, this);
-      this.enemyProjectiles = this.enemyProjectiles.filter(p => !p.dead);
+      compactAlive(this.enemyProjectiles, p => !p.dead);
       // Lootboxes
       for (const lb of this.lootboxes) lb.update(dt, this);
-      this.lootboxes = this.lootboxes.filter(lb => lb.alive);
+      compactAlive(this.lootboxes, lb => lb.alive);
       // Pickups
       ITEMS_RUNTIME.updatePickups(dt, this);
+      // Combos, active world events, bounties and synergies
+      this.director.update(dt);
       // Particles
       this.particles.update(dt);
 
@@ -327,15 +428,15 @@ class Game {
       if (!this.player.alive) {
         this.state = 'gameover';
         SDK.gameLose();
-        this.run.totalCoins = this.player.totalCoins;
+        this.syncMetaFromPlayer();
         this.persistMeta();
       }
     } else if (this.state === 'stagecomplete') {
       // Pause world
       for (const e of this.enemies) e.update(dt, this);
-      this.enemies = this.enemies.filter(e => e.alive);
+      compactAlive(this.enemies, e => e.alive);
       for (const p of this.projectiles) p.update(dt, this);
-      this.projectiles = this.projectiles.filter(p => !p.dead);
+      compactAlive(this.projectiles, p => !p.dead);
       this.particles.update(dt);
       // Camera still tracks player for context
       const tx = this.player.x - this.vw / 2;
@@ -391,6 +492,8 @@ class Game {
       UI.drawPause(ctx, this);
     }
 
+    if (this.state !== 'menu' && this.state !== 'help') UI.drawDirectorOverlay(ctx, this);
+
     // Open lootbox overlay (rendered on top of world)
     if (this.state === 'playing' && this.lootboxes.some(lb => lb.opened)) {
       for (const lb of this.lootboxes) if (lb.opened) lb.render(ctx, this.cam);
@@ -403,21 +506,24 @@ class Game {
     const stage = s ? STAGES[s.index] : STAGES[0];
 
     // ===== Background sky / depth gradient =====
-    const grad = ctx.createLinearGradient(0, 0, 0, this.vh);
-    if (stage.id === 'forest') {
-      grad.addColorStop(0, '#0a1a0a');
-      grad.addColorStop(1, stage.bg.ground);
-    } else if (stage.id === 'caves') {
-      grad.addColorStop(0, '#0a0a1a');
-      grad.addColorStop(1, stage.bg.ground);
-    } else if (stage.id === 'castle') {
-      grad.addColorStop(0, '#0a0010');
-      grad.addColorStop(1, stage.bg.ground);
-    } else { // dragon
-      grad.addColorStop(0, '#1a0000');
-      grad.addColorStop(1, stage.bg.ground);
+    if (!this._bgGradient || this._bgStageId !== stage.id) {
+      this._bgStageId = stage.id;
+      this._bgGradient = ctx.createLinearGradient(0, 0, 0, this.vh);
+      if (stage.id === 'forest') {
+        this._bgGradient.addColorStop(0, '#0a1a0a');
+        this._bgGradient.addColorStop(1, stage.bg.ground);
+      } else if (stage.id === 'caves') {
+        this._bgGradient.addColorStop(0, '#0a0a1a');
+        this._bgGradient.addColorStop(1, stage.bg.ground);
+      } else if (stage.id === 'castle') {
+        this._bgGradient.addColorStop(0, '#0a0010');
+        this._bgGradient.addColorStop(1, stage.bg.ground);
+      } else { // dragon
+        this._bgGradient.addColorStop(0, '#1a0000');
+        this._bgGradient.addColorStop(1, stage.bg.ground);
+      }
     }
-    ctx.fillStyle = grad;
+    ctx.fillStyle = this._bgGradient;
     ctx.fillRect(0, 0, this.vw, this.vh);
 
     // ===== Distant parallax layer (stars / fog) =====
@@ -444,6 +550,7 @@ class Game {
     for (const p of this.enemyProjectiles) p.render(ctx, this.cam);
     // Player
     if (this.player) this.player.render(ctx, this.cam);
+    this.director.renderWorld(ctx, this.cam);
     // Particles
     this.particles.render(ctx, this.cam);
 
@@ -572,28 +679,98 @@ class Game {
 
   // Subtle vignette darkening at screen edges
   renderVignette(ctx, stage) {
-    const grad = ctx.createRadialGradient(
-      this.vw / 2, this.vh / 2, this.vh * 0.3,
-      this.vw / 2, this.vh / 2, this.vh * 0.7
-    );
-    const edge = stage.id === 'caves' ? 'rgba(0,0,0,0.5)'
-      : stage.id === 'castle' ? 'rgba(20,0,10,0.5)'
-      : 'rgba(0,0,0,0.35)';
-    grad.addColorStop(0, 'rgba(0,0,0,0)');
-    grad.addColorStop(1, edge);
-    ctx.fillStyle = grad;
+    if (!this._vignetteGradient || this._vigW !== this.vw || this._vigH !== this.vh || this._vigStageId !== stage.id) {
+      this._vigW = this.vw;
+      this._vigH = this.vh;
+      this._vigStageId = stage.id;
+      this._vignetteGradient = ctx.createRadialGradient(
+        this.vw / 2, this.vh / 2, this.vh * 0.3,
+        this.vw / 2, this.vh / 2, this.vh * 0.7
+      );
+      const edge = stage.id === 'caves' ? 'rgba(0,0,0,0.5)'
+        : stage.id === 'castle' ? 'rgba(20,0,10,0.5)'
+        : 'rgba(0,0,0,0.35)';
+      this._vignetteGradient.addColorStop(0, 'rgba(0,0,0,0)');
+      this._vignetteGradient.addColorStop(1, edge);
+    }
+    ctx.fillStyle = this._vignetteGradient;
     ctx.fillRect(0, 0, this.vw, this.vh);
   }
 
   renderMenuBackground() {
     const ctx = this.ctx;
-    const grad = ctx.createLinearGradient(0, 0, 0, this.vh);
-    grad.addColorStop(0, '#1a0a3a');
-    grad.addColorStop(1, '#0a0a1a');
+    const t = this.time;
+    const grad = ctx.createRadialGradient(this.vw * 0.5, this.vh * 0.38, 40,
+      this.vw * 0.5, this.vh * 0.5, 850);
+    grad.addColorStop(0, '#351a66');
+    grad.addColorStop(0.48, '#100d2d');
+    grad.addColorStop(1, '#03050f');
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, this.vw, this.vh);
-    // Drifting gems
-    this.particles.update(0.016);
-    this.particles.render(ctx, { x: 0, y: 0, vw: this.vw, vh: this.vh });
+
+    // Layered arcane skyline: fully procedural, consistent with the in-game look.
+    for (let layer = 0; layer < 3; layer++) {
+      const baseY = 360 + layer * 75;
+      const speed = (layer + 1) * 3;
+      ctx.fillStyle = ['rgba(12,11,38,.9)', 'rgba(8,8,27,.95)', '#050611'][layer];
+      ctx.beginPath();
+      ctx.moveTo(0, this.vh);
+      ctx.lineTo(0, baseY);
+      for (let x = 0; x <= this.vw + 80; x += 80) {
+        const seed = Math.sin((x + layer * 97) * 0.021 + t * speed * 0.001);
+        ctx.lineTo(x, baseY - 40 - Math.abs(seed) * (80 + layer * 25));
+      }
+      ctx.lineTo(this.vw, this.vh);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    // Constellation field and drifting motes.
+    for (let i = 0; i < 95; i++) {
+      const x = (i * 173 + t * (4 + i % 3)) % (this.vw + 30) - 15;
+      const y = 20 + (i * 79) % 430;
+      const pulse = 0.25 + Math.max(0, Math.sin(t * 2.2 + i)) * 0.55;
+      ctx.fillStyle = i % 7 === 0 ? `rgba(192,132,252,${pulse})` : `rgba(165,243,252,${pulse})`;
+      ctx.fillRect(x, y, i % 7 === 0 ? 3 : 2, i % 7 === 0 ? 3 : 2);
+    }
+
+    // Central floating rift-gem focal point.
+    const cx = this.vw * 0.5, cy = 250 + Math.sin(t * 1.4) * 7;
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(t * 0.18);
+    ctx.globalCompositeOperation = 'lighter';
+    for (let i = 4; i > 0; i--) {
+      ctx.fillStyle = `rgba(${100 + i * 20},${80 + i * 24},255,${0.035 * i})`;
+      ctx.beginPath();
+      ctx.arc(0, 0, 45 + i * 28, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalCompositeOperation = 'source-over';
+    const gem = ctx.createLinearGradient(-30, -55, 35, 55);
+    gem.addColorStop(0, '#e9d5ff');
+    gem.addColorStop(0.35, '#a855f7');
+    gem.addColorStop(1, '#0891b2');
+    ctx.fillStyle = gem;
+    ctx.strokeStyle = '#f5d0fe';
+    ctx.lineWidth = 3;
+    ctx.shadowColor = '#c084fc';
+    ctx.shadowBlur = 35;
+    ctx.beginPath();
+    ctx.moveTo(0, -64); ctx.lineTo(42, -16); ctx.lineTo(25, 52);
+    ctx.lineTo(0, 72); ctx.lineTo(-25, 52); ctx.lineTo(-42, -16);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.strokeStyle = 'rgba(255,255,255,.65)';
+    ctx.lineWidth = 2; ctx.shadowBlur = 0;
+    ctx.beginPath(); ctx.moveTo(0, -64); ctx.lineTo(0, 72);
+    ctx.moveTo(-42, -16); ctx.lineTo(42, -16);
+    ctx.moveTo(-42, -16); ctx.lineTo(0, 10); ctx.lineTo(42, -16); ctx.stroke();
+    ctx.restore();
+
+    const fog = ctx.createLinearGradient(0, 400, 0, this.vh);
+    fog.addColorStop(0, 'rgba(14,116,144,0)');
+    fog.addColorStop(1, 'rgba(14,116,144,.13)');
+    ctx.fillStyle = fog;
+    ctx.fillRect(0, 400, this.vw, this.vh - 400);
   }
 }

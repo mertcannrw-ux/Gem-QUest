@@ -4,7 +4,15 @@
 **Project:** *Gem Quest — Arena Survival* (working title)
 **Type:** HTML5 2D arena-survival roguelite (Vampire-Survivors-style)
 **Target platform:** Crazy Games (https://www.crazygames.com/)
-**Last updated:** 2026-06-30
+**Last updated:** 2026-07-10
+
+> **Production-hardening update (2026-07-10):** The SDK integration, rewarded
+> revive flow, versioned persistence, iOS audio resume, permanent shop
+> persistence, server security headers/path handling, automated checks, tests,
+> and CI described as gaps in the original handoff have now been implemented.
+> Treat the historical checklist below as project background rather than the
+> current source of truth. See `README.md` and `PRODUCTION.md` for current setup,
+> verification commands, and the remaining external portal/release checks.
 
 ---
 
@@ -29,6 +37,7 @@ GemQuest/                                    ← clean copy (recommended workspa
     ├── particles.js                         Typed-array particle system
     ├── sprites.js                           ★ Procedural pixel-art sprite cache
     ├── data.js                              ★ 25+ items, 8 enemies, 4 bosses, 4 stages
+    ├── mechanics.js                         RunDirector, elite modifiers, item synergies, world events
     ├── player.js                            Player + auto-attack + item effects
     ├── enemies.js                           Enemy AI + 4 boss patterns
     ├── items.js                             XP gem / coin pickup logic
@@ -301,7 +310,7 @@ them up was a major bug source earlier.
 `index.html` loads JS in this order; **don't reorder**:
 ```
 utils.js → sdk.js → audio.js → input.js → particles.js → sprites.js
-→ data.js → player.js → enemies.js → items.js → lootbox.js
+→ data.js → mechanics.js → player.js → enemies.js → items.js → lootbox.js
 → stages.js → ui.js → game.js → main.js
 ```
 

@@ -36,11 +36,24 @@ You just move. Weapons fire automatically. Pick up gems to level up, grab coins 
 ```bash
 git clone https://github.com/mertcannrw-ux/Gem-QUest.git
 cd Gem-QUest
-node serve.js
+npm start
 # open http://localhost:8080
 ```
 
-No build step. No dependencies. Just static files served over HTTP.
+No build step or runtime dependencies. Node.js 20+ is used for the local
+server and automated verification.
+
+## ✅ Production Verification
+
+```bash
+npm ci
+npm run verify
+```
+
+`npm run verify` performs JavaScript syntax checks, validates local asset
+references, rejects unsafe browser APIs and obsolete SDK calls, enforces the
+platform size/file limits, and runs the automated unit + server security tests.
+GitHub Actions runs the same command for every pull request and push to `main`.
 
 ## 📂 Project Structure
 
@@ -62,6 +75,7 @@ Gem-QUest/
 │   ├── sprites.js          ★ Procedural pixel-art sprite cache
 │   ├── assets.js           AI art loader (graceful fallback)
 │   ├── data.js             ★ 25+ items, 8 enemies, 4 bosses, 4 stages
+│   ├── mechanics.js        RunDirector, elite modifiers, item synergies, world events
 │   ├── player.js           Player + auto-attack + item effects
 │   ├── enemies.js          Enemy AI + 4 boss patterns
 │   ├── items.js            XP gem / coin pickup logic
@@ -98,7 +112,7 @@ It's the master state machine. Possible refactor: split `state` into a dedicated
 
 ```
 utils.js → sdk.js → audio.js → input.js → particles.js → sprites.js
-→ assets.js → data.js → player.js → enemies.js → items.js → lootbox.js
+→ assets.js → data.js → mechanics.js → player.js → enemies.js → items.js → lootbox.js
 → stages.js → ui.js → game.js → main.js
 ```
 
@@ -108,7 +122,8 @@ The main `loop` is wrapped in `try { update; render; } catch (e) { log }`. This 
 
 ### Save / restore
 
-- `localStorage` fallback in `sdk.js` (works without CrazySDK)
+- CrazyGames SDK v3 data module with a `localStorage` fallback
+- Versioned `saveData` schema containing coins, unlocked stages, and shop levels
 - `SDK.save(key, value)` / `SDK.load(key, default)`
 - `game.persistMeta()` saves after every death / victory
 - `main.js` restores before the first frame
@@ -151,6 +166,16 @@ For new content (items, enemies, stages, bosses), start in `js/data.js` — the 
 ## 📜 License
 
 MIT — do whatever you want, just don't blame us if a slime kills your run.
+
+## 🔒 Security and Deployment
+
+- The included server rejects path traversal and unsupported HTTP methods.
+- Production-like CSP, MIME sniffing, referrer, and permissions headers are set
+  by `serve.js`.
+- The official CrazyGames HTML5 SDK v3 URL and APIs are used.
+- Rewarded rewards are granted only after the SDK reports `adFinished`.
+- For release, host the static files on CrazyGames or behind a maintained HTTPS
+  CDN; `serve.js` is intentionally a small local preview server.
 
 ## 🎮 Made With
 

@@ -26,6 +26,7 @@ class Player {
     this.baseStats = {
       moveSpeed: 1.6,        // world units/sec
       damage: 10,
+      damageMult: 0,
       attackSpeed: 1.0,      // shots per second
       projectileSpeed: 380,
       projectileSize: 0.7,
@@ -57,8 +58,9 @@ class Player {
       drones: 0,
       meteor: 0,
       revive: 0,
-      reviveHp: 0.3,
-      maxHp: 0               // additive HP bonus (from items, not shop)
+
+      maxHp: 0,
+      maxHpPercent: 0
     };
 
     // Shop bonuses (persisted between runs)
@@ -79,6 +81,11 @@ class Player {
     this.droneTimer = 0;
     this.drones = []; // active drones
     this.animTime = 0;
+    this.dashCooldown = 0;
+    this.dashTime = 0;
+    this.dashDir = { x: 1, y: 0 };
+    this.trailTimer = 0;
+    this.tempestTimer = 0;
   }
 
   // Compute effective stats: base + shop + (items * stacks * rarity multiplier)
@@ -105,8 +112,7 @@ class Player {
   // Effective scalar stats used in many places
   maxHpEffective() {
     const s = this.stats();
-    return Math.max(10, this.maxHp + (this.shopLevels.hp || 0) * 10
-      + Math.round(s.maxHp * this.maxHp));
+    return Math.max(10, Math.round((this.maxHp + s.maxHp) * (1 + s.maxHpPercent)));
   }
   attackCooldownFromStats(s) { return 1 / Math.max(0.2, s.attackSpeed); }
   moveSpeedEffective(s) { return s.moveSpeed * 220; } // world units/sec baseline
@@ -146,21 +152,17 @@ class Player {
     }
   }
 
-  heal(amount) {
-    if (!this.alive) return;
-    this.hp = Math.min(this.maxHpEffective(), this.hp + amount);
-  }
-
   gainXp(amount) {
     const s = this.stats();
     this.xp += amount * s.xpGain;
+    let levelsGained = 0;
     while (this.xp >= this.xpToNext) {
       this.xp -= this.xpToNext;
       this.level++;
       this.xpToNext = xpToLevel(this.level);
-      return true; // signal a level up
+      levelsGained++;
     }
-    return false;
+    return levelsGained;
   }
 
   addCoins(amount) {
@@ -171,9 +173,19 @@ class Player {
   }
 
   addItem(id) {
-    this.items[id] = (this.items[id] || 0) + 1;
     const it = ITEM_BY_ID[id];
+    if (!it) return false;
+    this.items[id] = Math.min(it.maxStacks, (this.items[id] || 0) + 1);
     return it && this.items[id] >= it.maxStacks;
+  }
+
+  revive(hpFraction = 0.5) {
+    if (this.alive) return false;
+    this.alive = true;
+    this.hp = Math.max(1, Math.floor(this.maxHpEffective() * Utils.clamp(hpFraction, 0.1, 1)));
+    this.invuln = 2;
+    this.hitFlash = 0;
+    return true;
   }
 
   // Update position, attack timer, regen, invuln decay
@@ -193,14 +205,48 @@ class Player {
 
     this.invuln = Math.max(0, this.invuln - dt);
     this.hitFlash = Math.max(0, this.hitFlash - dt);
+    this.dashCooldown = Math.max(0, this.dashCooldown - dt);
+    this.tempestTimer = Math.max(0, this.tempestTimer - dt);
 
     // Animation time
     this.animTime = (this.animTime || 0) + dt;
 
     const ax = Input.getMoveAxis();
     const spd = this.moveSpeedEffective(s);
-    this.x += ax.x * spd * dt;
-    this.y += ax.y * spd * dt;
+    if (Input.justPressed.has(' ') && this.dashCooldown <= 0) {
+      const moving = ax.x !== 0 || ax.y !== 0;
+      this.dashDir.x = moving ? ax.x : Math.cos(this.facing);
+      this.dashDir.y = moving ? ax.y : Math.sin(this.facing);
+      this.dashTime = 0.18;
+      this.dashCooldown = Math.max(1.6, 3.1 - this.level * 0.015);
+      this.invuln = Math.max(this.invuln, 0.28);
+      game.shake.trigger(3);
+      game.particles.spawnRing(this.x, this.y, '#67e8f9', 36);
+      Audio.shootBig();
+    }
+    if (Input.justPressed.has('e')) {
+      if (!game.director.activateNova()) {
+        game.particles.spawnFloat(this.x, this.y - 30, 'NEED 35 CHARGE', '#94a3b8', 14);
+        Audio.deny();
+      }
+    }
+
+    if (this.dashTime > 0) {
+      this.dashTime -= dt;
+      this.x += this.dashDir.x * spd * 3.4 * dt;
+      this.y += this.dashDir.y * spd * 3.4 * dt;
+      this.trailTimer -= dt;
+      if (this.trailTimer <= 0) {
+        this.trailTimer = 0.025;
+        game.particles.spawn({
+          x: this.x, y: this.y, vx: -this.dashDir.x * 35, vy: -this.dashDir.y * 35,
+          life: 0.28, size: 10, shrink: 28, color: '#67e8f9'
+        });
+      }
+    } else {
+      this.x += ax.x * spd * dt;
+      this.y += ax.y * spd * dt;
+    }
     if (ax.x !== 0 || ax.y !== 0) {
       this.facing = Math.atan2(ax.y, ax.x);
       this.isMoving = true;
@@ -227,6 +273,22 @@ class Player {
       }
     }
 
+    // Tempest Engine periodically releases a close-range lightning fan.
+    if (game.director.hasSynergy('tempest') && this.tempestTimer <= 0 && game.enemies.length) {
+      this.tempestTimer = 2.4;
+      const damage = s.damage * (1 + s.damageMult) * 0.65;
+      for (let i = 0; i < 8; i++) {
+        const a = i / 8 * Math.PI * 2 + this.animTime;
+        game.projectiles.push(new Projectile({
+          x: this.x, y: this.y,
+          vx: Math.cos(a) * 440, vy: Math.sin(a) * 440,
+          size: 5, dmg: damage, pierce: 1, chain: 1,
+          owner: this, kind: 'storm', life: 1.1
+        }));
+      }
+      game.particles.spawnRing(this.x, this.y, '#67e8f9', 80);
+    }
+
     // Drones
     if (s.drones > 0) {
       // Update existing drones
@@ -250,15 +312,18 @@ class Player {
           }
           if (target) {
             const a = Math.atan2(target.y - this.y, target.x - this.x);
-            const sp = 380;
+            const singularity = game.director.hasSynergy('singularity');
+            const sp = singularity ? 470 : 380;
             game.projectiles.push(new Projectile({
               x: this.x + Math.cos(d.angle) * 60,
               y: this.y + Math.sin(d.angle) * 60,
               vx: Math.cos(a) * sp, vy: Math.sin(a) * sp,
-              size: 6, dmg: s.damage * 0.5,
-              pierce: 0, owner: this, source: target
+              size: singularity ? 9 : 6,
+              dmg: s.damage * (1 + s.damageMult) * (singularity ? 0.8 : 0.5),
+              pierce: singularity ? 1 : 0, owner: this, source: target,
+              kind: singularity ? 'void' : null
             }));
-            d.fire = 0.6;
+            d.fire = singularity ? 0.38 : 0.6;
           } else {
             d.fire = 0.1;
           }
@@ -301,13 +366,12 @@ class Player {
       const a = baseAngle + t * spread;
       const crit = Math.random() < s.critChance;
       const isBoss = target.boss;
-      const dmg = s.damage * (crit ? s.critMult : 1)
+      const dmg = s.damage * (1 + s.damageMult) * (crit ? s.critMult : 1)
                 * (isBoss ? 1 + s.bossDamage : 1);
 
       // Determine projectile sprite id based on stats
       let kind = null;
-      if (s.poison > 0) kind = null; // poison via kind: 'poison' flag on Projectile
-      if (s.slow > 0) kind = null;
+      // poison via kind: 'poison' flag on Projectile
       if (s.burn > 0) kind = 'ember';
       if (s.area > 0.5) kind = 'void';
 
@@ -352,6 +416,19 @@ class Player {
       glow: 'rgba(122,240,255,0.5)',
       glowSize: 8
     });
+
+    // Dash readiness ring gives the character a readable action-state silhouette.
+    if (this.dashCooldown <= 0) {
+      ctx.save();
+      ctx.strokeStyle = 'rgba(103,232,249,0.55)';
+      ctx.lineWidth = 2;
+      ctx.shadowColor = '#67e8f9';
+      ctx.shadowBlur = 8;
+      ctx.beginPath();
+      ctx.arc(sx, sy + 2, 22 + Math.sin(this.animTime * 4) * 2, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
 
     // Subtle pickup radius hint
     if (Input.mouse.down) {

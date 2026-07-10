@@ -80,13 +80,9 @@ class StageManager {
       }
     }
 
-    // Stage done?
-    if (this.bossSpawned && this.bossKilled && this.game.lootboxes.length === 0) {
-      // Wait for player to pick from lootbox
-    }
   }
 
-  spawnEnemy(type) {
+  spawnEnemy(type, forceElite = false) {
     const t = ENEMIES[type];
     const p = this.game.player;
     // Spawn 350-500 pixels from player at random angle
@@ -94,7 +90,14 @@ class StageManager {
     const d = 350 + Math.random() * 150;
     const x = p.x + Math.cos(a) * d;
     const y = p.y + Math.sin(a) * d;
-    this.game.enemies.push(new Enemy(type, x, y));
+    const enemy = new Enemy(type, x, y);
+    const eliteChance = 0.035 + this.index * 0.018 + Math.min(0.08, this.stageTime / 900);
+    if (forceElite || (!enemy.boss && Math.random() < eliteChance)) {
+      const modifier = ELITE_MODIFIERS[Math.floor(Math.random() * ELITE_MODIFIERS.length)];
+      applyEliteModifier(enemy, modifier);
+      this.game.particles.spawnRing(x, y, modifier.color, 45);
+    }
+    this.game.enemies.push(enemy);
   }
 
   spawnBoss(type) {
@@ -107,7 +110,4 @@ class StageManager {
     this.game.shake.trigger(6);
   }
 
-  isStageComplete() {
-    return this.bossKilled && this.game.lootboxes.length === 0;
-  }
 }

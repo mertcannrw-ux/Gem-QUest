@@ -971,7 +971,7 @@ const Sprite = (() => {
       '..KKCCCCKK...\n' +
       '..KKCCCCKK...\n' +
       '..KK....KK...\n' +
-      '..KK....KK...\\n' +
+      '..KK....KK...\n' +
         '..KK....KK...\n' +
         '..KK....KK...\n' +
         '..KK....KK...\n',
@@ -1253,7 +1253,7 @@ const Sprite = (() => {
       '.KFFOOOfOK...\n' +
       '.KFFfOOfOK...\n' +
       '.KffOOOOOK...\n' +
-      '.KfOOOOOOK...\\n' +
+      '.KfOOOOOOK...\n' +
       '..KOOOOOK....\n' +
       '...KfOfK.....\n' +
       '...KffK......\n' +
@@ -1376,8 +1376,8 @@ const Sprite = (() => {
       '....KKKKKKKK....\n' +
       '....KKwwwwwKK...\n' +
       '....KAAAAAAAK....\n' +
-      '...KKKwwwwKKK...\\n' +
-      '..KKKAAAAAAA KKK.\n' +
+      '...KKKwwwwKKK...\n' +
+      '..KKKAAAAAAAKKK.\n' +
       '.KKAAAAAAAAAAAKK.\n' +
       'KKKKKKKKKKKKKKKK\n',
       0, 0, 1
@@ -1395,7 +1395,7 @@ const Sprite = (() => {
       '....KKKKKKKK....\n' +
       '....KKyyyyyKK...\n' +
       '....KIIIIIIIK....\n' +
-      '...KKKyyyyKKK...\\n' +
+      '...KKKyyyyKKK...\n' +
       '..KKKIIIIIIIKKK.\n' +
       '.KKIIIIIIIIIIKK.\n' +
       'KKKKKKKKKKKKKKKK\n',

@@ -12,9 +12,22 @@
 
   function setBoot(t) { if (bootText) bootText.textContent = t; }
 
+  // Compute a sane upper bound for totalCoins from the shop economy.
+  // Tampered localStorage values are clamped to this to prevent coin
+  // inflation exploits.
+  function computeMaxCoins() {
+    let total = 0;
+    for (const u of (typeof SHOP_UPGRADES !== 'undefined' ? SHOP_UPGRADES : [])) {
+      for (let lvl = 0; lvl < (u.max || 0); lvl++) total += Math.floor(u.cost * (1 + lvl * 0.5));
+    }
+    return Math.max(1000, Math.floor(total * 1.5));
+  }
+  const MAX_TOTAL_COINS = computeMaxCoins();
+
   try {
     setBoot('Initializing SDK...');
     await SDK.init();
+    SDK.loadingStart();
   } catch (e) {
     console.warn('SDK init error:', e);
   }
@@ -24,22 +37,24 @@
   try { Sprite.buildAll(); }
   catch (e) { console.warn('Sprite build failed:', e); }
 
-  setBoot('Loading backgrounds...');
-  // Preload AI-generated background art (loading screen + menu bg).
-  // The promise always resolves, even if an image fails, so the
-  // game still boots.
-  try { await Assets.loadAll(); }
-  catch (e) { console.warn('Asset load failed:', e); }
+  setBoot('Opening the rift...');
 
   setBoot('Restoring progress...');
   const game = new Game(canvas);
 
   // Load persistent state
   try {
-    const total = await SDK.load('totalCoins', 0);
-    const max = await SDK.load('maxStageReached', 0);
-    game.run.totalCoins = total || 0;
-    game.run.maxStageReached = max || 0;
+    let save = await SDK.load('saveData', null);
+    if (!save || save.version !== 1) {
+      const total = await SDK.load('totalCoins', 0);
+      const max = await SDK.load('maxStageReached', 0);
+      save = { version: 1, totalCoins: total, maxStageReached: max, shopLevels: {} };
+    }
+    game.run.totalCoins = Math.min(MAX_TOTAL_COINS, Math.max(0, Math.floor(Number(save.totalCoins) || 0)));
+    game.run.maxStageReached = Utils.clamp(
+      Math.floor(Number(save.maxStageReached) || 0), 0, STAGES.length - 1
+    );
+    game.run.shopLevels = game.sanitizeShopLevels(save.shopLevels);
   } catch (e) {
     console.warn('Save load failed:', e);
   }
@@ -73,6 +88,7 @@
   function dismissBoot() {
     if (bootScreen.classList.contains('hidden')) return;
     bootScreen.classList.add('hidden');
+    SDK.loadingStop();
     setTimeout(() => { bootScreen.style.display = 'none'; }, 500);
     // Also try to resume the audio context on the first user
     // gesture, since the policy requires a click before audio plays.
@@ -80,6 +96,7 @@
   }
   bootScreen.addEventListener('click', dismissBoot);
   bootScreen.addEventListener('touchend', dismissBoot);
+  document.addEventListener('touchend', () => Audio.resume(), { passive: true });
   // Also allow Enter / Space.
   window.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' || e.key === ' ') dismissBoot();
@@ -94,6 +111,7 @@
     if (document.hidden && game.state === 'playing') {
       game.previousState = 'playing';
       game.state = 'paused';
+      SDK.gameplayStop();
     }
   });
 })();
