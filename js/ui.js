@@ -158,23 +158,7 @@ const UI = (() => {
       align: 'center', font: 'bold 18px Trebuchet MS', color: '#67e8f9', stroke: '#000'
     });
 
-    // Decorative gems around title
     const cx = ctx.canvas.width / 2;
-    for (let i = 0; i < 3; i++) {
-      const gx = cx - 200 + i * 200;
-      const gy = titleY + 30;
-      const bob = Math.sin(game.time * 2 + i) * 4;
-      if (Sprite.has('pickup_gem')) {
-        const s = Sprite.get('pickup_gem');
-        const colors = ['#7af0ff', '#fbbf24', '#fb7185'];
-        ctx.save();
-        ctx.shadowColor = colors[i];
-        ctx.shadowBlur = 10;
-        ctx.translate(gx, gy + bob);
-        ctx.drawImage(s.image, -s.w / 2, -s.h / 2);
-        ctx.restore();
-      }
-    }
 
     // Dark glass control panel keeps the dramatic focal gem visible.
     const panelX = cx - 205, panelY = 350, panelW = 410, panelH = 342;
@@ -194,7 +178,7 @@ const UI = (() => {
     button(ctx, cx - bw / 2, by, bw, bh, 'NEW GAME', () => game.startNewRun());
     by += bh + gap;
 
-    // Stage select (only show unlocked stages)
+    // Stage select — colored borders for all stages (locked ones dimmed)
     by += 2;
     text(ctx, '— STAGES —', cx, by, { align: 'center', font: 'bold 14px sans-serif', color: '#7af0ff' });
     by += 24;
@@ -202,34 +186,34 @@ const UI = (() => {
     for (let i = 0; i < STAGES.length; i++) {
       const unlocked = i === 0 || game.run.maxStageReached >= i;
       const x = cx - (STAGES.length * (sw + 10) - 10) / 2 + i * (sw + 10);
+      const hover = unlocked && ctx._hover && pointInRect(ctx._mouse, x, by, sw, sh);
+      const accent = STAGES[i].bg.accent;
+      ctx.save();
+      if (hover) {
+        ctx.shadowColor = accent;
+        ctx.shadowBlur = 12;
+      }
+      ctx.fillStyle = hover ? '#2a2a4a' : '#1a1a2a';
+      ctx.beginPath();
+      ctx.roundRect(x, by, sw, sh, 6);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.globalAlpha = unlocked ? 1 : 0.4;
+      ctx.strokeStyle = accent;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+      text(ctx, `${i + 1}`, x + sw / 2, by + sh / 2 - 4,
+        { align: 'center', baseline: 'middle', font: 'bold 28px sans-serif', color: unlocked ? accent : '#475569' });
+      text(ctx, STAGES[i].name, x + sw / 2, by + sh - 8,
+        { align: 'center', font: '9px sans-serif', color: unlocked ? '#cbd5e1' : '#475569' });
+      ctx.restore();
       if (unlocked) {
-        const hover = ctx._hover && pointInRect(ctx._mouse, x, by, sw, sh);
-        ctx.save();
-        if (hover) {
-          ctx.shadowColor = STAGES[i].bg.accent;
-          ctx.shadowBlur = 12;
-        }
-        ctx.fillStyle = hover ? '#2a2a4a' : '#1a1a2a';
-        ctx.fillRect(x, by, sw, sh);
-        ctx.shadowBlur = 0;
-        ctx.strokeStyle = STAGES[i].bg.accent;
-        ctx.lineWidth = 2;
-        ctx.strokeRect(x, by, sw, sh);
-        text(ctx, `${i + 1}`, x + sw / 2, by + sh / 2 - 4,
-          { align: 'center', baseline: 'middle', font: 'bold 28px sans-serif', color: STAGES[i].bg.accent });
-        text(ctx, STAGES[i].name, x + sw / 2, by + sh - 8,
-          { align: 'center', font: '9px sans-serif', color: '#cbd5e1' });
-        ctx.restore();
         buttons.push({
           x, y: by, w: sw, h: sh,
           onClick: () => game.startNewRun(i)
         });
       } else {
-        ctx.fillStyle = '#1a1a2a';
-        ctx.fillRect(x, by, sw, sh);
-        ctx.strokeStyle = '#333';
-        ctx.lineWidth = 2;
-        ctx.strokeRect(x, by, sw, sh);
         drawLockIcon(ctx, x + sw / 2 - 8, by + sh / 2 - 8, 2);
       }
     }
