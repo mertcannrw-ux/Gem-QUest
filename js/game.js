@@ -20,16 +20,17 @@ class Game {
     this.ctx.imageSmoothingEnabled = false;
 
     // Logical resolution - the canvas backing store is rendered at
-    // this size, then the CSS scales it to fit the viewport. We
+    // this size * DPR, then the CSS scales it to fit the viewport. We
     // pick a single design resolution (1280x720) and letterbox.
     this.vw = 1280;
     this.vh = 720;
-    this.canvas.width = this.vw;
-    this.canvas.height = this.vh;
-
-    // Camera (world position of the top-left of the viewport)
-    this.cam = { x: 0, y: 0, vw: this.vw, vh: this.vh };
+    this.dpr = Math.min(window.devicePixelRatio || 1, 2);
+    this.canvas.width = this.vw * this.dpr;
+    this.canvas.height = this.vh * this.dpr;
+    this.ctx.scale(this.dpr, this.dpr);
+    this.ctx.imageSmoothingEnabled = false;
     this.shake = Utils.makeShake();
+    this.cam = { x: 0, y: 0, vw: this.vw, vh: this.vh };
 
     // Game state
     this.state = 'menu'; // menu | help | playing | levelup | stagecomplete | shop | gameover | victory | paused
