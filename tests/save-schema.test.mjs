@@ -20,7 +20,7 @@ function buildGameContext() {
     window: {},
     performance: { now: () => 0 }
   };
-  const ctx = loadScripts(['js/utils.js', 'js/data.js', 'js/core/constants.js', 'js/core/game-state.js', 'js/core/lifecycle.js', 'js/platform/settings-store.js', 'js/platform/save-schema.js', 'js/platform/meta-progress.js', 'js/game/canvas-viewport.js', 'js/game/game-loop.js', 'js/game/world-session.js', 'js/game.js'], additions);
+  const ctx = loadScripts(['js/utils.js', 'js/data.js', 'js/core/constants.js', 'js/core/game-state.js', 'js/core/lifecycle.js', 'js/platform/settings-store.js', 'js/platform/save-schema.js', 'js/platform/meta-progress.js', 'js/game/canvas-viewport.js', 'js/game/game-loop.js', 'js/game/world-session.js', 'js/world/environment-system.js', 'js/world/environment-renderer.js', 'js/game.js'], additions);
   vm.runInContext(`
     function makeGame() {
       const g = Object.create(Game.prototype);

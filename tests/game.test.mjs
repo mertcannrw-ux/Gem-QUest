@@ -75,6 +75,8 @@ test('audio exposes contextual events and player-controlled mix/accessibility se
 test('environment rendering includes a bottom-anchored forest prop family and terrain variants', () => {
   const source = readFileSync(resolve(root, 'js/sprites.js'), 'utf8');
   const renderer = readFileSync(resolve(root, 'js/game.js'), 'utf8');
+  const envSystem = readFileSync(resolve(root, 'js/world/environment-system.js'), 'utf8');
+  const envRenderer = readFileSync(resolve(root, 'js/world/environment-renderer.js'), 'utf8');
   for (const id of [
     'prop_tree_trunk_oak',
     'prop_tree_trunk_pine',
@@ -104,11 +106,11 @@ test('environment rendering includes a bottom-anchored forest prop family and te
   assert.match(source, /const bounds = right >= left/);
   assert.match(renderer, /renderProps\(ctx, stage, 'ground'\)/);
   assert.match(renderer, /renderProps\(ctx, stage, 'foreground'\)/);
-  assert.match(renderer, /environmentProps\(stage\)/);
-  assert.match(renderer, /const canopyLift = \{/);
-  assert.match(renderer, /const anchorBottom = bounds\.bottom \+ 1/);
+  assert.match(envSystem, /environmentProps\(stage\)/);
+  assert.match(envRenderer, /const canopyLift = \{/);
+  assert.match(envRenderer, /const anchorBottom = bounds\.bottom \+ 1/);
   assert.match(renderer, /resetEnvironment\(\)/);
-  assert.match(renderer, /environmentSpatialHash/);
+  assert.match(envSystem, /environmentSpatialHash/);
   assert.match(renderer, /moveActorWithEnvironment\(/);
   assert.match(renderer, /traceEnvironmentHit\(/);
   assert.match(renderer, /damageEnvironmentObject\(/);
@@ -117,7 +119,7 @@ test('environment rendering includes a bottom-anchored forest prop family and te
 });
 
 test('trees remain solid, block traced projectiles, and become non-solid stumps after destruction', () => {
-  const ctx = loadScripts(['js/utils.js', 'js/platform/settings-store.js', 'js/platform/save-schema.js', 'js/platform/meta-progress.js', 'js/core/constants.js', 'js/core/game-state.js', 'js/core/lifecycle.js', 'js/game/canvas-viewport.js', 'js/game/game-loop.js', 'js/game/world-session.js', 'js/game.js'], {
+  const ctx = loadScripts(['js/utils.js', 'js/platform/settings-store.js', 'js/platform/save-schema.js', 'js/platform/meta-progress.js', 'js/core/constants.js', 'js/core/game-state.js', 'js/core/lifecycle.js', 'js/game/canvas-viewport.js', 'js/game/game-loop.js', 'js/game/world-session.js', 'js/world/environment-system.js', 'js/world/environment-renderer.js', 'js/game.js'], {
     Audio: { play() {} },
     ParticleSystem: class {},
     RunDirector: class {},
@@ -132,10 +134,7 @@ test('trees remain solid, block traced projectiles, and become non-solid stumps 
     (() => {
       globalThis.__Game = Game;
       const game = Object.create(Game.prototype);
-      game.environmentObjects = new Map();
-      game.environmentCells = new Set();
-      game.environmentSpatialHash = new Map();
-      game.environmentCellSize = 128;
+      game.environment = new EnvironmentSystem(game);
       game.stage = null;
       game.particles = {
         spawnSparkBurst() {}, spawnRing() {}, spawnBurst() {}
@@ -146,13 +145,13 @@ test('trees remain solid, block traced projectiles, and become non-solid stumps 
         solid: true, destructible: true, collisionRadius: 24,
         hp: 20, maxHp: 20, hitFlash: 0, fallDuration: 0.58, fallTime: 0
       };
-      game.addEnvironmentObject(tree);
+      game.environment.addEnvironmentObject(tree);
       const actor = { x: -80, y: 0 };
-      game.moveActorWithEnvironment(actor, 120, 0, 14);
+      game.environment.moveActorWithEnvironment(actor, 120, 0, 14);
       const blockedX = actor.x;
-      const hit = game.traceEnvironmentHit(-100, 0, 100, 0, 3);
-      game.damageEnvironmentObject(tree, 25, { x: -50, y: 0 }, 0, 0);
-      game.updateEnvironment(0.6);
+      const hit = game.environment.traceEnvironmentHit(-100, 0, 100, 0, 3);
+      game.environment.damageEnvironmentObject(tree, 25, { x: -50, y: 0 }, 0, 0);
+      game.environment.updateEnvironment(0.6);
       return {
         blockedX,
         hitId: hit?.object.id,
@@ -168,7 +167,7 @@ test('trees remain solid, block traced projectiles, and become non-solid stumps 
 });
 
 test('starting a new run defensively initializes persistent environment containers', () => {
-  const ctx = loadScripts(['js/utils.js', 'js/platform/settings-store.js', 'js/platform/save-schema.js', 'js/platform/meta-progress.js', 'js/core/constants.js', 'js/core/game-state.js', 'js/core/lifecycle.js', 'js/game/canvas-viewport.js', 'js/game/game-loop.js', 'js/game/world-session.js', 'js/game.js'], {
+  const ctx = loadScripts(['js/utils.js', 'js/platform/settings-store.js', 'js/platform/save-schema.js', 'js/platform/meta-progress.js', 'js/core/constants.js', 'js/core/game-state.js', 'js/core/lifecycle.js', 'js/game/canvas-viewport.js', 'js/game/game-loop.js', 'js/game/world-session.js', 'js/world/environment-system.js', 'js/world/environment-renderer.js', 'js/game.js'], {
     Audio: { resume() {} },
     Player: class {
       constructor() {
@@ -192,14 +191,15 @@ test('starting a new run defensively initializes persistent environment containe
       Object.assign(game, {
         run: { totalCoins: 0, shopLevels: {} },
         enemies: [], projectiles: [], enemyProjectiles: [], lootboxes: [],
-        particles: { clear() {} }, director: { reset() {} }, canvas: { focus() {} }
+        particles: { clear() {} }, director: { reset() {} }, canvas: { focus() {} },
+        environment: new EnvironmentSystem(game)
       });
       game.startNewRun();
       return {
         state: game.state,
-        objectMap: game.environmentObjects instanceof Map,
-        cellSet: game.environmentCells instanceof Set,
-        hashMap: game.environmentSpatialHash instanceof Map
+        objectMap: game.environment.environmentObjects instanceof Map,
+        cellSet: game.environment.environmentCells instanceof Set,
+        hashMap: game.environment.environmentSpatialHash instanceof Map
       };
     })()
   `, ctx);
@@ -677,7 +677,7 @@ test('touch release does not clear a still-held keyboard direction', () => {
 
 test('canvas backing resolution follows physical display pixels', () => {
   const ctx = loadScripts(
-    ['js/platform/settings-store.js', 'js/platform/save-schema.js', 'js/platform/meta-progress.js', 'js/core/constants.js', 'js/core/game-state.js', 'js/core/lifecycle.js', 'js/game/canvas-viewport.js', 'js/game/game-loop.js', 'js/game/world-session.js', 'js/game.js'],
+    ['js/platform/settings-store.js', 'js/platform/save-schema.js', 'js/platform/meta-progress.js', 'js/core/constants.js', 'js/core/game-state.js', 'js/core/lifecycle.js', 'js/game/canvas-viewport.js', 'js/game/game-loop.js', 'js/game/world-session.js', 'js/world/environment-system.js', 'js/world/environment-renderer.js', 'js/game.js'],
     {
       SHOP_UPGRADES: [],
       STAGES: [],
@@ -705,7 +705,7 @@ test('canvas backing resolution follows physical display pixels', () => {
 
 test('main-menu forge creates a persistent shop profile without starting a run', () => {
   const ctx = loadScripts(
-    ['js/platform/settings-store.js', 'js/platform/save-schema.js', 'js/platform/meta-progress.js', 'js/core/constants.js', 'js/core/game-state.js', 'js/core/lifecycle.js', 'js/game/canvas-viewport.js', 'js/game/game-loop.js', 'js/game/world-session.js', 'js/game.js'],
+    ['js/platform/settings-store.js', 'js/platform/save-schema.js', 'js/platform/meta-progress.js', 'js/core/constants.js', 'js/core/game-state.js', 'js/core/lifecycle.js', 'js/game/canvas-viewport.js', 'js/game/game-loop.js', 'js/game/world-session.js', 'js/world/environment-system.js', 'js/world/environment-renderer.js', 'js/game.js'],
     {
       SHOP_UPGRADES: [],
       STAGES: [],
@@ -749,7 +749,7 @@ test('main-menu forge creates a persistent shop profile without starting a run',
 test('main-menu forge renders without requiring a stage HUD', () => {
   const calls = [];
   const ctx = loadScripts(
-    ['js/platform/settings-store.js', 'js/platform/save-schema.js', 'js/platform/meta-progress.js', 'js/core/constants.js', 'js/core/game-state.js', 'js/core/lifecycle.js', 'js/game/canvas-viewport.js', 'js/game/game-loop.js', 'js/game/world-session.js', 'js/game.js'],
+    ['js/platform/settings-store.js', 'js/platform/save-schema.js', 'js/platform/meta-progress.js', 'js/core/constants.js', 'js/core/game-state.js', 'js/core/lifecycle.js', 'js/game/canvas-viewport.js', 'js/game/game-loop.js', 'js/game/world-session.js', 'js/world/environment-system.js', 'js/world/environment-renderer.js', 'js/game.js'],
     {
       SHOP_UPGRADES: [],
       STAGES: [],
@@ -792,7 +792,7 @@ test('main-menu forge renders without requiring a stage HUD', () => {
 
 test('stage completion proceeds when a boss lootbox has no item choices', () => {
   const ctx = loadScripts(
-    ['js/lootbox.js', 'js/platform/settings-store.js', 'js/platform/save-schema.js', 'js/platform/meta-progress.js', 'js/core/constants.js', 'js/core/game-state.js', 'js/core/lifecycle.js', 'js/game/canvas-viewport.js', 'js/game/game-loop.js', 'js/game/world-session.js', 'js/game.js'],
+    ['js/lootbox.js', 'js/platform/settings-store.js', 'js/platform/save-schema.js', 'js/platform/meta-progress.js', 'js/core/constants.js', 'js/core/game-state.js', 'js/core/lifecycle.js', 'js/game/canvas-viewport.js', 'js/game/game-loop.js', 'js/game/world-session.js', 'js/world/environment-system.js', 'js/world/environment-renderer.js', 'js/game.js'],
     {
       LOOTBOX: { gold: { count: 3 } },
       pickItemRewards: () => [],
@@ -838,7 +838,7 @@ test('stage completion proceeds when a boss lootbox has no item choices', () => 
 
 test('stage-complete state freezes combat while allowing particles to animate', () => {
   const ctx = loadScripts(
-    ['js/platform/settings-store.js', 'js/platform/save-schema.js', 'js/platform/meta-progress.js', 'js/core/constants.js', 'js/core/game-state.js', 'js/core/lifecycle.js', 'js/game/canvas-viewport.js', 'js/game/game-loop.js', 'js/game/world-session.js', 'js/game.js'],
+    ['js/platform/settings-store.js', 'js/platform/save-schema.js', 'js/platform/meta-progress.js', 'js/core/constants.js', 'js/core/game-state.js', 'js/core/lifecycle.js', 'js/game/canvas-viewport.js', 'js/game/game-loop.js', 'js/game/world-session.js', 'js/world/environment-system.js', 'js/world/environment-renderer.js', 'js/game.js'],
     {
       SHOP_UPGRADES: [],
       STAGES: [],
@@ -878,7 +878,7 @@ test('stage-complete state freezes combat while allowing particles to animate', 
 
 test('stage completion stops director and pickup updates in its transition frame', () => {
   const ctx = loadScripts(
-    ['js/platform/settings-store.js', 'js/platform/save-schema.js', 'js/platform/meta-progress.js', 'js/core/constants.js', 'js/core/game-state.js', 'js/core/lifecycle.js', 'js/game/canvas-viewport.js', 'js/game/game-loop.js', 'js/game/world-session.js', 'js/game.js'],
+    ['js/platform/settings-store.js', 'js/platform/save-schema.js', 'js/platform/meta-progress.js', 'js/core/constants.js', 'js/core/game-state.js', 'js/core/lifecycle.js', 'js/game/canvas-viewport.js', 'js/game/game-loop.js', 'js/game/world-session.js', 'js/world/environment-system.js', 'js/world/environment-renderer.js', 'js/game.js'],
     {
       SHOP_UPGRADES: [],
       STAGES: [{ id: 'forest' }],
@@ -930,7 +930,7 @@ test('stage completion stops director and pickup updates in its transition frame
 test('a fatal game-loop error stops further animation frames', () => {
   let scheduledFrames = 0;
   const ctx = loadScripts(
-    ['js/platform/settings-store.js', 'js/platform/save-schema.js', 'js/platform/meta-progress.js', 'js/core/constants.js', 'js/core/game-state.js', 'js/core/lifecycle.js', 'js/game/canvas-viewport.js', 'js/game/game-loop.js', 'js/game/world-session.js', 'js/game.js'],
+    ['js/platform/settings-store.js', 'js/platform/save-schema.js', 'js/platform/meta-progress.js', 'js/core/constants.js', 'js/core/game-state.js', 'js/core/lifecycle.js', 'js/game/canvas-viewport.js', 'js/game/game-loop.js', 'js/game/world-session.js', 'js/world/environment-system.js', 'js/world/environment-renderer.js', 'js/game.js'],
     {
       SHOP_UPGRADES: [],
       STAGES: [],
