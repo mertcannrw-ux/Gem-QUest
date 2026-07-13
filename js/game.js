@@ -70,9 +70,9 @@ class Game {
     this.cam = { x: 0, y: 0, vw: this.vw, vh: this.vh };
 
     // Game state
-    this.state = 'menu'; // menu | help | settings | playing | levelup | stagecomplete | shop | gameover | victory | paused
-    this.previousState = 'menu';
-    this.shopReturnState = 'stagecomplete';
+    this.state = GAME_STATE.MENU; // One of the GAME_STATE.* values.
+    this.previousState = GAME_STATE.MENU;
+    this.shopReturnState = GAME_STATE.STAGE_COMPLETE;
     this.time = 0;
     this.settings = this.loadSettings();
 
@@ -245,31 +245,45 @@ class Game {
     this.saveSettings();
   }
 
+  // Single, auditable entry point for changing the game state. Rejects unknown
+  // states, optionally records the previous state, drives portal lifecycle
+  // notifications (start only when entering PLAYING from another state, stop
+  // only when leaving PLAYING), and assigns the new state exactly once.
+  transitionTo(nextState, options = {}) {
+    if (!isGameState(nextState)) return false;
+    if (this.state === nextState) return false;
+    const wasPlaying = this.state === GAME_STATE.PLAYING;
+    if (options.storePrevious) this.previousState = this.state;
+    if (options.storeShopReturn) this.shopReturnState = this.state;
+    if (nextState === GAME_STATE.PLAYING && !wasPlaying) {
+      GameLifecycle.enterInteractivePlay();
+    } else if (wasPlaying && nextState !== GAME_STATE.PLAYING) {
+      GameLifecycle.leaveInteractivePlay();
+    }
+    this.state = nextState;
+    return true;
+  }
+
   openSettings() {
-    this.previousState = this.state;
-    this.state = 'settings';
-    SDK.gameplayStop();
+    this.transitionTo(GAME_STATE.SETTINGS, { storePrevious: true });
   }
 
   closeSettings() {
-    this.state = this.previousState || 'menu';
-    if (this.state === 'playing') SDK.gameplayStart();
+    this.transitionTo(this.previousState || GAME_STATE.MENU);
   }
 
   toMenu() {
-    SDK.gameplayStop();
+    this.transitionTo(GAME_STATE.MENU);
     this.syncMetaFromPlayer();
     void this.persistMeta();
-    this.state = 'menu';
   }
-  showHelp() { this.state = 'help'; }
-  closeHelp() { this.state = 'menu'; }
+  showHelp() { this.transitionTo(GAME_STATE.HELP); }
+  closeHelp() { this.transitionTo(GAME_STATE.MENU); }
   resume() {
-    this.state = this.previousState || 'playing';
-    if (this.state === 'playing') SDK.gameplayStart();
+    this.transitionTo(this.previousState || GAME_STATE.PLAYING);
   }
   openShop() {
-    this.shopReturnState = this.state;
+    this.transitionTo(GAME_STATE.SHOP, { storeShopReturn: true });
     this.shopOpenedAt = this.time;
     this.shopPurchaseFx = null;
 
@@ -282,13 +296,9 @@ class Game {
       this.player.coins = this.run.totalCoins;
       this.player.shopLevels = { ...this.run.shopLevels };
     }
-
-    this.state = 'shop';
-    SDK.gameplayStop();
   }
   closeShop() {
-    this.state = this.shopReturnState || 'stagecomplete';
-    if (this.state === 'playing') SDK.gameplayStart();
+    this.transitionTo(this.shopReturnState || GAME_STATE.STAGE_COMPLETE);
   }
 
   startNewRun(stageIndex = 0, newGamePlus = false) {
@@ -311,9 +321,8 @@ class Game {
     this.director.reset();
     this.stage = new StageManager(this);
     this.stage.startStage(stageIndex);
-    this.state = 'playing';
+    this.transitionTo(GAME_STATE.PLAYING);
     this.time = 0;
-    SDK.gameplayStart();
     // Make canvas focusable so it can receive keys
     this.canvas.focus();
   }
@@ -331,15 +340,13 @@ class Game {
     this.persistMeta();
     this.stage.startStage(next);
     this.resetEnvironment();
-    this.state = 'playing';
-    SDK.gameplayStart();
+    this.transitionTo(GAME_STATE.PLAYING);
   }
 
   finishRun() {
-    this.state = 'victory';
+    this.transitionTo(GAME_STATE.VICTORY);
     this.syncMetaFromPlayer();
-    SDK.gameplayStop();
-    SDK.happyTime();
+    GameLifecycle.reportHappyTime();
     this.persistMeta();
   }
 
@@ -374,8 +381,7 @@ class Game {
   presentLevelUpChoice() {
     if (this.pendingLevelUps <= 0) {
       this.levelUpChoices = null;
-      this.state = 'playing';
-      SDK.gameplayStart();
+      this.transitionTo(GAME_STATE.PLAYING);
       return;
     }
     this.levelUpChoices = pickItemRewards(this.player.items, 3);
@@ -385,12 +391,10 @@ class Game {
       this.particles.spawnFloat(this.player.x, this.player.y - 30,
         `+${fallbackCoins} coins (all items maxed)`, '#ffd84a');
       this.pendingLevelUps = 0;
-      this.state = 'playing';
-      SDK.gameplayStart();
+      this.transitionTo(GAME_STATE.PLAYING);
       return;
     }
-    this.state = 'levelup';
-    SDK.gameplayStop();
+    this.transitionTo(GAME_STATE.LEVEL_UP);
     // Big visual feedback
     this.shake.trigger(3);
     this.particles.spawnRing(this.player.x, this.player.y, '#7af0ff', 60);
@@ -410,12 +414,12 @@ class Game {
       '+' + stage.reward.coins + ' coins', '#ffd84a');
     // Mark boss killed - stage complete check
     this.stage.bossKilled = true;
-    SDK.happyTime();
+    GameLifecycle.reportHappyTime();
   }
 
   handleClick(mx, my) {
     // Lootbox pick?
-    if (this.state === 'playing') {
+    if (this.state === GAME_STATE.PLAYING) {
       for (const lb of this.lootboxes) {
         if (lb.opened && lb.choices) {
           // Compute card hit area
@@ -434,7 +438,7 @@ class Game {
         }
       }
     }
-    if (this.state === 'levelup') {
+    if (this.state === GAME_STATE.LEVEL_UP) {
       if (this.levelUpChoices) {
         const cw = 200, ch = 280, gap = 24;
         const totalW = cw * this.levelUpChoices.length + gap * (this.levelUpChoices.length - 1);
@@ -455,10 +459,10 @@ class Game {
         }
       }
     }
-    if (this.state === 'menu' || this.state === 'help' || this.state === 'settings' ||
-        this.state === 'shop' || this.state === 'gameover' ||
-        this.state === 'stagecomplete' || this.state === 'victory' ||
-        this.state === 'paused') {
+    if (this.state === GAME_STATE.MENU || this.state === GAME_STATE.HELP || this.state === GAME_STATE.SETTINGS ||
+        this.state === GAME_STATE.SHOP || this.state === GAME_STATE.GAME_OVER ||
+        this.state === GAME_STATE.STAGE_COMPLETE || this.state === GAME_STATE.VICTORY ||
+        this.state === GAME_STATE.PAUSED) {
       UI.handleClick(mx, my);
     }
   }
@@ -466,11 +470,9 @@ class Game {
   // Pause toggling via Escape
   handleKey(k) {
     if (k === 'escape' || k === 'p') {
-      if (this.state === 'playing') {
-        this.previousState = 'playing';
-        this.state = 'paused';
-        SDK.gameplayStop();
-      } else if (this.state === 'paused') {
+      if (this.state === GAME_STATE.PLAYING) {
+        this.transitionTo(GAME_STATE.PAUSED, { storePrevious: true });
+      } else if (this.state === GAME_STATE.PAUSED) {
         this.resume();
       }
     }
@@ -500,15 +502,14 @@ class Game {
   }
 
   completeStageIfReady() {
-    if (this.state !== 'playing' || !this.stage?.bossKilled || this.lootboxes.length > 0) return false;
+    if (this.state !== GAME_STATE.PLAYING || !this.stage?.bossKilled || this.lootboxes.length > 0) return false;
     this.transitionToStageComplete();
     return true;
   }
 
   transitionToStageComplete() {
-    if (this.state === 'stagecomplete') return;
-    this.state = 'stagecomplete';
-    SDK.gameplayStop();
+    if (this.state === GAME_STATE.STAGE_COMPLETE) return;
+    this.transitionTo(GAME_STATE.STAGE_COMPLETE);
     // Freeze combat immediately. Existing hostile shots should not damage the
     // player while the completion UI is on screen.
     this.enemyProjectiles.length = 0;
@@ -521,22 +522,22 @@ class Game {
   }
 
   transitionToGameOver() {
-    if (this.state === 'gameover') return;
-    this.state = 'gameover';
-    SDK.gameLose();
+    if (this.state === GAME_STATE.GAME_OVER) return;
+    this.transitionTo(GAME_STATE.GAME_OVER);
+    GameLifecycle.reportLoss();
     this.syncMetaFromPlayer();
     void this.persistMeta();
   }
 
   async reviveFromAd() {
-    if (this.state !== 'gameover' || this.reviveUsed || this.adPending || !this.player) return;
+    if (this.state !== GAME_STATE.GAME_OVER || this.reviveUsed || this.adPending || !this.player) return;
     const wasMuted = Audio.isMuted();
     this.adPending = true;
     let result;
     try {
       result = await SDK.showAdRewarded({
         onStarted: () => {
-          SDK.gameplayStop();
+          GameLifecycle.leaveInteractivePlay();
           Audio.setMuted(true);
         }
       });
@@ -544,7 +545,7 @@ class Game {
       this.adPending = false;
       Audio.setMuted(wasMuted);
     }
-    if (!result.completed || this.state !== 'gameover') return;
+    if (!result.completed || this.state !== GAME_STATE.GAME_OVER) return;
     if (this.player.revive(0.5)) {
       this.reviveUsed = true;
       this.enemyProjectiles.length = 0;
@@ -554,8 +555,7 @@ class Game {
       this.particles.spawnRing(this.player.x, this.player.y, '#7af0ff', 90);
       this.particles.spawnBurst(this.player.x, this.player.y, '#7af0ff', 35, 240);
       Audio.play?.('reward.reveal', { rarity: 'legendary', x: this.player.x, y: this.player.y });
-      this.state = 'playing';
-      SDK.gameplayStart();
+      this.transitionTo(GAME_STATE.PLAYING);
     }
   }
 
@@ -584,7 +584,7 @@ class Game {
   handleFatalError(error) {
     if (this.fatalError) return;
     this.fatalError = error instanceof Error ? error : new Error(String(error));
-    SDK.gameplayStop();
+    GameLifecycle.leaveInteractivePlay();
     console.error('Fatal game loop error:', this.fatalError);
     try { this.renderFatalError(); } catch (_) {}
     if (typeof window?.dispatchEvent === 'function' && typeof CustomEvent === 'function') {
@@ -618,7 +618,7 @@ class Game {
     this.shake.y *= shakeStrength;
     Audio.sync?.(this);
 
-    if (this.state === 'playing') {
+    if (this.state === GAME_STATE.PLAYING) {
       // Spawn the player at world origin if not present
       const stageDef = STAGES[this.stage.index];
       this.ensureEnvironmentAround(stageDef, this.player.x, this.player.y, 2);
@@ -659,11 +659,11 @@ class Game {
         this.particles.update(dt);
 
         // Check death only while still in the active gameplay state.
-        if (this.state === 'playing' && !this.player.alive) {
+        if (this.state === GAME_STATE.PLAYING && !this.player.alive) {
           this.transitionToGameOver();
         }
       }
-    } else if (this.state === 'stagecomplete') {
+    } else if (this.state === GAME_STATE.STAGE_COMPLETE) {
       // Keep the arena visible, but fully pause combat until the player
       // advances. Updating enemies here could apply contact damage while the
       // player is unable to respond.
@@ -673,14 +673,14 @@ class Game {
       const ty = this.player.y - this.vh / 2;
       this.cam.x = Utils.lerp(this.cam.x, tx, 0.1);
       this.cam.y = Utils.lerp(this.cam.y, ty, 0.1);
-    } else if (this.state === 'levelup') {
+    } else if (this.state === GAME_STATE.LEVEL_UP) {
       // Pause world but render it
       this.particles.update(dt);
-    } else if (this.state === 'menu' || this.state === 'help' || this.state === 'settings') {
+    } else if (this.state === GAME_STATE.MENU || this.state === GAME_STATE.HELP || this.state === GAME_STATE.SETTINGS) {
       // Animate menu background subtly
       this.cam.x += dt * 20;
-    } else if (this.state === 'shop' || this.state === 'gameover' ||
-               this.state === 'victory' || this.state === 'paused') {
+    } else if (this.state === GAME_STATE.SHOP || this.state === GAME_STATE.GAME_OVER ||
+               this.state === GAME_STATE.VICTORY || this.state === GAME_STATE.PAUSED) {
       this.particles.update(dt);
     }
   }
@@ -698,11 +698,11 @@ class Game {
 
     const ctx = this.ctx;
     UI.clearButtons();
-    const menuForge = this.state === 'shop' &&
-      (this.shopReturnState === 'menu' || !this.stage);
+    const menuForge = this.state === GAME_STATE.SHOP &&
+      (this.shopReturnState === GAME_STATE.MENU || !this.stage);
 
     // World
-    if (this.state !== 'menu' && this.state !== 'help' && this.state !== 'settings' && !menuForge) {
+    if (this.state !== GAME_STATE.MENU && this.state !== GAME_STATE.HELP && this.state !== GAME_STATE.SETTINGS && !menuForge) {
       this.renderWorld();
     } else {
       this.renderMenuBackground();
@@ -711,38 +711,38 @@ class Game {
     // UI overlay
     this.ctx._hover = this.mouseLogical;
     this.ctx._mouse = this.mouseLogical;
-    if (this.state === 'menu') UI.drawMainMenu(ctx, this);
-    else if (this.state === 'help') UI.drawHelp(ctx, this);
-    else if (this.state === 'settings') UI.drawSettings(ctx, this);
-    else if (this.state === 'playing') UI.drawHUD(ctx, this);
-    else if (this.state === 'levelup') {
+    if (this.state === GAME_STATE.MENU) UI.drawMainMenu(ctx, this);
+    else if (this.state === GAME_STATE.HELP) UI.drawHelp(ctx, this);
+    else if (this.state === GAME_STATE.SETTINGS) UI.drawSettings(ctx, this);
+    else if (this.state === GAME_STATE.PLAYING) UI.drawHUD(ctx, this);
+    else if (this.state === GAME_STATE.LEVEL_UP) {
       UI.drawHUD(ctx, this);
       UI.drawLevelUp(ctx, this);
     }
-    else if (this.state === 'stagecomplete') {
+    else if (this.state === GAME_STATE.STAGE_COMPLETE) {
       UI.drawHUD(ctx, this);
       UI.drawStageComplete(ctx, this);
     }
-    else if (this.state === 'shop') {
+    else if (this.state === GAME_STATE.SHOP) {
       // A shop opened after a stage keeps the run visible behind it. The
       // main-menu Forge has no StageManager yet, so drawing the stage HUD
       // would dereference a missing stage and abort the frame.
       if (!menuForge) UI.drawHUD(ctx, this);
       UI.drawShop(ctx, this);
     }
-    else if (this.state === 'gameover') UI.drawGameOver(ctx, this);
-    else if (this.state === 'victory') UI.drawVictory(ctx, this);
-    else if (this.state === 'paused') {
+    else if (this.state === GAME_STATE.GAME_OVER) UI.drawGameOver(ctx, this);
+    else if (this.state === GAME_STATE.VICTORY) UI.drawVictory(ctx, this);
+    else if (this.state === GAME_STATE.PAUSED) {
       UI.drawHUD(ctx, this);
       UI.drawPause(ctx, this);
     }
 
-    if (this.state !== 'menu' && this.state !== 'help' && this.state !== 'settings' && !menuForge) {
+    if (this.state !== GAME_STATE.MENU && this.state !== GAME_STATE.HELP && this.state !== GAME_STATE.SETTINGS && !menuForge) {
       UI.drawDirectorOverlay(ctx, this);
     }
 
     // Open lootbox overlay (rendered on top of world)
-    if (this.state === 'playing' && this.lootboxes.some(lb => lb.opened)) {
+    if (this.state === GAME_STATE.PLAYING && this.lootboxes.some(lb => lb.opened)) {
       for (const lb of this.lootboxes) if (lb.opened) lb.render(ctx, this.cam);
     }
   }

@@ -132,10 +132,8 @@
   // Auto-pause when tab hidden (Crazy Games pauses for ads, but we
   // should also pause when the tab is backgrounded to save CPU).
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden && game.state === 'playing') {
-      game.previousState = 'playing';
-      game.state = 'paused';
-      SDK.gameplayStop();
+    if (document.hidden && game.state === GAME_STATE.PLAYING) {
+      game.transitionTo(GAME_STATE.PAUSED, { storePrevious: true });
     }
   });
 })();

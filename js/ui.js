@@ -1286,7 +1286,7 @@ const UI = (() => {
     // boss must not accidentally resume a completed stage.
     const bw = 210, bh = 44;
     const cx = w / 2;
-    const backLabel = game.shopReturnState === 'menu' ? 'BACK TO MENU' : 'BACK';
+    const backLabel = game.shopReturnState === GAME_STATE.MENU ? 'BACK TO MENU' : 'BACK';
     button(ctx, cx - bw / 2, h - 62, bw, bh, backLabel,
       () => game.closeShop(), {
         font: 'bold 14px Trebuchet MS',

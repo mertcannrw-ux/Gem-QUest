@@ -90,7 +90,14 @@ function buildContext() {
     performance: { now: () => 0 },
     requestAnimationFrame: () => 0
   };
-  const ctx = loadScripts(['js/utils.js', 'js/data.js', 'js/game.js'], additions);
+  const ctx = loadScripts([
+    'js/utils.js',
+    'js/core/constants.js',
+    'js/core/game-state.js',
+    'js/core/lifecycle.js',
+    'js/data.js',
+    'js/game.js'
+  ], additions);
   vm.runInContext(`
     function makeGame() {
       const g = Object.create(Game.prototype);
@@ -354,4 +361,42 @@ test('frozen states do not update combat', () => {
   })()`);
   assert.equal(result.enemyUpdates, 0);
   assert.equal(result.projectileUpdates, 0);
+});
+
+test('transitionTo rejects unknown states and is idempotent', () => {
+  const { ctx, log } = buildContext();
+  const result = run(ctx, `(function () {
+    const g = makeGame();
+    g.state = 'playing';
+    const rejectedString = g.transitionTo('not-a-real-state');
+    const rejectedUndefined = g.transitionTo(undefined);
+    // A repeated transition to the current state must be a no-op and must not
+    // re-fire any lifecycle (start/stop) side effects.
+    const before = log.length;
+    const dup = g.transitionTo('playing');
+    const dupNoLifecycle = log.length === before && dup === false;
+    return { rejectedString, rejectedUndefined, dupNoLifecycle, state: g.state };
+  })()`);
+  assert.equal(result.rejectedString, false);
+  assert.equal(result.rejectedUndefined, false);
+  assert.equal(result.dupNoLifecycle, true);
+  assert.equal(result.state, 'playing');
+});
+
+test('entering then leaving play fires start/stop exactly once each', () => {
+  const { ctx, log } = buildContext();
+  const result = run(ctx, `(function () {
+    const g = makeGame();
+    g.state = 'menu';
+    g.transitionTo('playing');          // start
+    g.transitionTo('stagecomplete');    // stop
+    g.transitionTo('playing');          // start again
+    g.transitionTo('menu');             // stop again
+    return {
+      starts: log.filter((x) => x === 'gameplayStart').length,
+      stops: log.filter((x) => x === 'gameplayStop').length
+    };
+  })()`);
+  assert.equal(result.starts, 2);
+  assert.equal(result.stops, 2);
 });

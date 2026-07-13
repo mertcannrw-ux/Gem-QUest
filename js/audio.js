@@ -363,14 +363,14 @@ const Audio = (() => {
 
   function sync(game) {
     if (!game) return;
-    const menuForge = game.state === 'shop' && (game.shopReturnState === 'menu' || !game.stage);
+    const menuForge = game.state === GAME_STATE.SHOP && (game.shopReturnState === GAME_STATE.MENU || !game.stage);
     let scene = 'stage';
-    if (game.state === 'menu' || game.state === 'help' || game.state === 'settings') scene = 'menu';
+    if (game.state === GAME_STATE.MENU || game.state === GAME_STATE.HELP || game.state === GAME_STATE.SETTINGS) scene = 'menu';
     else if (menuForge) scene = 'forge';
-    else if (game.state === 'gameover' || game.state === 'victory') scene = 'menu';
+    else if (game.state === GAME_STATE.GAME_OVER || game.state === GAME_STATE.VICTORY) scene = 'menu';
 
     const stage = game.stage?.index || 0;
-    const event = game.state === 'playing' ? game.director?.activeEvent?.id || null : null;
+    const event = game.state === GAME_STATE.PLAYING ? game.director?.activeEvent?.id || null : null;
     const boss = Boolean(game.stage?.bossSpawned && !game.stage?.bossKilled);
     const changed = scene !== currentScene || stage !== currentStage;
     currentScene = scene;
@@ -388,8 +388,8 @@ const Audio = (() => {
     if (ctx && musicFilter && musicMaster) {
       const targetCutoff = scene === 'menu' ? 2500 : (STAGE_MUSIC[stage]?.color || 2400);
       musicFilter.frequency.setTargetAtTime(targetCutoff, ctx.currentTime, 0.8);
-      const subdued = game.state === 'paused' || game.state === 'levelup' ||
-        game.state === 'stagecomplete' || game.state === 'gameover';
+      const subdued = game.state === GAME_STATE.PAUSED || game.state === GAME_STATE.LEVEL_UP ||
+        game.state === GAME_STATE.STAGE_COMPLETE || game.state === GAME_STATE.GAME_OVER;
       musicMaster.gain.setTargetAtTime(subdued ? musicVolume * 0.62 : musicVolume, ctx.currentTime, 0.5);
       if (changed) {
         step = 0;
@@ -401,7 +401,7 @@ const Audio = (() => {
   }
 
   function scheduleAmbience(scene, stage, state) {
-    if (!ctx || muted || scene !== 'stage' || state !== 'playing' || ctx.currentTime < ambienceTimer) return;
+    if (!ctx || muted || scene !== 'stage' || state !== GAME_STATE.PLAYING || ctx.currentTime < ambienceTimer) return;
     const profiles = [
       { freq: 260, noise: 1800, highpass: true },
       { freq: 510, noise: 950, highpass: false },

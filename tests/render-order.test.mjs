@@ -11,7 +11,14 @@ function buildContext() {
     Audio: { resume() {}, play() {}, setMuted() {}, isMuted() { return false; }, sync() {} },
     window: {}
   };
-  const ctx = loadScripts(['js/utils.js', 'js/data.js', 'js/game.js'], additions);
+  const ctx = loadScripts([
+    'js/utils.js',
+    'js/core/constants.js',
+    'js/core/game-state.js',
+    'js/core/lifecycle.js',
+    'js/data.js',
+    'js/game.js'
+  ], additions);
   return ctx;
 }
 
