@@ -2,7 +2,7 @@
 
 > Last updated: **2026-07-13** · based on commit **`43419d3`** (branch `codex/major-refactor`)
 > Authoritative plan: **`REFACTOR_PLAN.md`** (read it before doing any phase).
-> Status: **109 tests green · `npm run verify` green · 12 of 17 plan phases done (one extra).**
+> Status: **113 tests green · `npm run verify` green · 13 of 17 plan phases done (one extra).**
 
 ---
 
@@ -12,7 +12,7 @@ We are mid-way through the behavior-preserving refactor of `js/game.js` (and a f
 other large files) into focused subsystems, per `REFACTOR_PLAN.md`. Every phase so
 far is committed, runs, and keeps `npm run verify` green.
 
-- **You can keep going with the next concrete step: start plan Phase 10** — split enemy/boss/mutation/projectile logic into `js/combat/{enemy,enemy-ai,boss-ai,mutations,projectile}.js`. See `REFACTOR_PLAN.md` Phase 10.
+- **You can keep going with the next concrete step: start plan Phase 11** — split player combat + drones into `js/combat/{player-combat,drone-system}.js`. See `REFACTOR_PLAN.md` Phase 11.
 - **Golden rule:** small move-and-delegate edits, keep tests green, one phase per
   commit. Never change gameplay/balance/art/visuals. No ES modules (classic
   `<script>` + shared globals only).
@@ -70,7 +70,12 @@ js/
     lifecycle.js                      ← new
     random.js                         ← new (shared rng + hash)
   data.js
-  enemies.js
+  combat/                             ← new (Phase 10)
+    projectile.js                    ← new (Projectile)
+    enemy.js                        ← new (Enemy entity/lifecycle/render)
+    enemy-ai.js                     ← new (shoot + rare mutation)
+    boss-ai.js                      ← new (boss patterns + BOSS_AI map)
+    mutations.js                    ← new (applyEliteModifier)
   game.js                             ← still the orchestrator (shrinking)
   game/
     canvas-viewport.js                ← new
@@ -125,14 +130,17 @@ js/
 ... js/world/world-renderer.js              (Phase 6b, before combat-coordinator)
 ... js/world/menu-background-renderer.js    (Phase 6b, before combat-coordinator)
 ... js/combat/combat-coordinator.js        (right before mechanics.js)
-... js/mechanics.js,                  (mutation data + applyEliteModifier only)
+... js/mechanics.js,                  (mutation data only; applyEliteModifier moved to js/combat/mutations.js)
 ... js/run/run-director.js,           (Phase 9 class definition)
 ... js/run/combo-system.js, js/run/bounty-system.js,
     js/run/synergies.js, js/run/event-common.js,
     js/run/events/gem-storm.js, js/run/events/starfall.js,
     js/run/events/luminous-tide.js, js/run/events/rift-frenzy.js,
     (all run/*.js load AFTER mechanics.js and BEFORE player.js/game.js)
-... js/player.js, js/enemies.js, js/items.js,
+... js/player.js,
+    js/combat/mutations.js, js/combat/projectile.js,
+    js/combat/enemy.js, js/combat/enemy-ai.js, js/combat/boss-ai.js,
+    js/items.js,
     js/lootbox.js, js/stages.js,
     js/ui/ui-core.js,                 (Phase 7, before screens)
     js/ui/screens/*.js (main-menu, help, settings, hud, level-up, stage-complete,
@@ -235,14 +243,13 @@ planned extraction:
 
 ---
 
-## 6. Next concrete step — start plan Phase 10 (enemy / boss / mutation / projectile)
+## 6. Next concrete step — start plan Phase 11 (player combat + drones)
 
-Split `Enemy`, `Boss`, `Mutation`, and `Projectile` logic per `REFACTOR_PLAN.md` Phase 10:
-`js/combat/{enemy,enemy-ai,boss-ai,mutations,projectile}.js`. Keep the global
-`Projectile`/`Enemy` names. Boss dispatch moves to a `BOSS_AI` map. `Enemy` keeps entity
-state + `takeDamage`/`die`/status and delegates AI. Move `Projectile` unchanged first,
-then add projectile tests (environment tunneling, player/enemy collision) before
-continuing. Keep `npm run verify` green, one file per commit.
+Split `Player` combat from progression/state per `REFACTOR_PLAN.md` Phase 11:
+`js/combat/player-combat.js` (target selection + projectile construction) and
+`js/combat/drone-system.js` (companion orbiting/firing). Keep progression/state on `Player`;
+preserve the `player.drones` getter. Move one responsibility at a time and keep `Player.damage`
+/ `takeDamage` / movement on the entity. Keep `npm run verify` green, one file per commit.
 
 ---
 
@@ -253,7 +260,7 @@ continuing. Keep `npm run verify` green, one file per commit.
 | 7 | UI split behind `UI` facade | `js/ui/ui-core.js`, `js/ui/screens/*`, `js/ui.js` (facade) | ✅ DONE. `UI.drawMainMenu` etc. are delegates; `UI.beginFrame`/`clearButtons`/`handleClick` forward to `UICore`. Lootbox/level-up hit-testing stays in `Game` for now (later commit). |
 | 8 | State handlers | registry in `js/core/game-state.js` | ✅ DONE. `Game.update`/`render`/`handleClick`/`handleKey` delegate to `GAME_STATE_HANDLERS[state]`; `transitionTo` calls `exit`→assign→`enter`. Lootbox/level-up click routing moved into handlers. |
 | 9 | Run director + world events | `js/run/{combo-system,bounty-system,synergies,run-director}.js`, `js/run/events/*` | ✅ DONE (prototype-augmentation split; `mechanics.js` keeps only mutation data + `applyEliteModifier`; `tests/run-director.test.mjs` drives every event). |
-| 10 | Enemy / boss / mutation / projectile | `js/combat/{enemy,enemy-ai,boss-ai,mutations,projectile}.js` | Keep global `Projectile`/`Enemy`. Boss dispatch → `BOSS_AI` map. `Enemy` keeps entity state + `takeDamage`/`die`/status + AI delegation. |
+| 10 | Enemy / boss / mutation / projectile | `js/combat/{enemy,enemy-ai,boss-ai,mutations,projectile}.js` | ✅ DONE. `Projectile`→projectile.js; `Enemy` entity in enemy.js (update dispatches to prototype methods); enemy-ai.js (shoot + rare mutation), boss-ai.js (boss patterns + `BOSS_AI` map), mutations.js (`applyEliteModifier`). `tests/projectile.test.mjs` added. |
 | 11 | Player combat + drones | `js/combat/{player-combat,drone-system}.js` | Keep progression/state on `Player`; move target selection + projectile construction + drones out. Preserve `player.drones` getter. |
 | 12 | Audio facade split | `js/audio/{audio-context,mixer,music,ambience,sfx,audio}.js` | Inventory `Audio.*` calls first; facade contract test; `Audio.sync(game)` builds a scene description, not the whole `game`. Preserve mute-around-rewarded-ad. |
 | 13 | Sprite cache ↔ catalogs | `js/render/sprite.js`, `js/render/catalogs/*` | Add pixel-checksum test first; move one catalog at a time; compare all checksums. Keep `Sprite.buildAll()`. Keep `ItemArt` separate. |

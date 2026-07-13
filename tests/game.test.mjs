@@ -221,7 +221,7 @@ test('enemy rendering never depends on the gameplay update context', () => {
 
 test('mutations scale enemy bodies and rare mutations expose unique mechanics', () => {
   const ctx = loadScripts(
-    ['js/utils.js', 'js/core/random.js', 'js/mechanics.js', 'js/run/run-director.js', 'js/run/combo-system.js', 'js/run/bounty-system.js', 'js/run/synergies.js', 'js/run/event-common.js', 'js/run/events/gem-storm.js', 'js/run/events/starfall.js', 'js/run/events/luminous-tide.js', 'js/run/events/rift-frenzy.js', 'js/enemies.js'],
+    ['js/utils.js', 'js/core/random.js', 'js/mechanics.js', 'js/run/run-director.js', 'js/run/combo-system.js', 'js/run/bounty-system.js', 'js/run/synergies.js', 'js/run/event-common.js', 'js/run/events/gem-storm.js', 'js/run/events/starfall.js', 'js/run/events/luminous-tide.js', 'js/run/events/rift-frenzy.js', 'js/combat/mutations.js', 'js/combat/projectile.js', 'js/combat/enemy.js', 'js/combat/enemy-ai.js', 'js/combat/boss-ai.js'],
     {
       ENEMIES: {
         slime: { id: 'slime', name: 'Slime', hp: 20, speed: 40, dmg: 5, xp: 2, coin: 1, size: 20, ai: 'chase' }

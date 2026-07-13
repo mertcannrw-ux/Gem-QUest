@@ -1043,6 +1043,14 @@ js/combat/projectile.js
 3. `refactor: extract mutation behavior`
 4. `refactor: extract normal enemy ai`
 
+> **Status: ✅ COMPLETE** (uncommitted — see handoff). `Projectile` moved verbatim to
+`js/combat/projectile.js`; `Enemy` (entity/lifecycle/status/render) stays in `js/combat/enemy.js`
+with `update` dispatching to `Enemy.prototype` methods on `js/combat/enemy-ai.js` (shoot +
+rare mutation) and `js/combat/boss-ai.js` (four boss patterns + a `BOSS_AI` map used by
+`update`). `applyEliteModifier` moved to `js/combat/mutations.js` (mutation data, `ELITE_MODIFIERS`,
+remains in `mechanics.js` for the later content-data split). `tests/projectile.test.mjs` covers
+tunneling, free-flight, and player/enemy collision. `npm run verify` stays green (113 tests).
+
 ## 18. Phase 11 — Split Player Combat and Drones
 
 ### Goal
