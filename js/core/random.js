@@ -67,3 +67,5 @@ function environmentHash(x, y, salt = 0) {
 function environmentRandom(x, y, salt = 0) {
   return environmentHash(x, y, salt) / 4294967295;
 }
+
+export { makeRuntimeRandom, createProductionRandom, makeSeededRandom, environmentHash, environmentRandom };

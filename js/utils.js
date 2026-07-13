@@ -140,3 +140,5 @@ const Utils = (() => {
     pick, range, intRange, chance, hexToRgb, rgba, makeShake, formatNum
   };
 })();
+
+export { Utils };

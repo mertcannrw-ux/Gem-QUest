@@ -244,3 +244,5 @@ const GAME_STATE_HANDLERS = {
     }
   }
 };
+
+export { GAME_STATE, VALID_GAME_STATES, GAME_STATE_HANDLERS, isGameState };

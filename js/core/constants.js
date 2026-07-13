@@ -16,9 +16,10 @@ const LOGICAL_HEIGHT = 720;
 /** @type {number} */
 const MAX_RENDER_SCALE = 3;
 
-
 const MIN_RENDER_SCALE = 1;
 
 // A frame longer than this (seconds) is clamped to keep the simulation stable
 // after tab switches or long GC pauses.
 const MAX_DELTA_TIME = 0.1;
+
+export { LOGICAL_WIDTH, LOGICAL_HEIGHT, MAX_RENDER_SCALE, MIN_RENDER_SCALE, MAX_DELTA_TIME };

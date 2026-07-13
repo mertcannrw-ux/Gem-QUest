@@ -25,3 +25,5 @@ const GameLifecycle = {
     SDK.happyTime();
   }
 };
+
+export { GameLifecycle };
