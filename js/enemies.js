@@ -110,20 +110,10 @@ class Enemy {
       game.damageEnvironmentInRadius?.(this.x, this.y, radius, dmg, killer);
       game.director?.triggerStarfall(this, killer, dmg);
     }
-    // Drop XP
-    if (this.xp > 0) {
-      ITEMS_RUNTIME.spawnGem(this.x + Utils.range(-6, 6), this.y + Utils.range(-6, 6), this.xp);
-    }
-    // Drop coin
-    if (this.coin > 0) {
-      ITEMS_RUNTIME.spawnCoin(this.x + Utils.range(-6, 6), this.y + Utils.range(-6, 6), this.coin);
-    }
     game.particles.spawnBurst(this.x, this.y, this.color, 8, 120);
-    if (this.boss) {
-      game.shake.trigger(8);
-      game.particles.spawnBurst(this.x, this.y, '#fbbf24', 50, 300);
-      game.onBossKill(this);
-    }
+    // Per-kill pickups (XP gem + coin) and the boss reward path are owned by
+    // the CombatCoordinator so enemies.js stays focused on AI/movement.
+    game.combat.handleEnemyDeath(this);
     if (killerStats && killerStats.lifesteal > 0) killer.heal(killerStats.lifesteal);
   }
 

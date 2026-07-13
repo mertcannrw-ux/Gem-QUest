@@ -69,7 +69,6 @@ class Game {
     });
 
     this.levelUpChoices = null;
-    this.pendingLevelUps = 0;
     this.reviveUsed = false;
     this.adPending = false;
 
@@ -161,6 +160,14 @@ class Game {
     return this._terrainRenderer;
   }
   set terrainRenderer(v) { this._terrainRenderer = v; }
+
+  // Cross-entity combat outcomes (level-ups, boss rewards, kill drops) live in
+  // CombatCoordinator; the same lazy pattern keeps partial fixtures working.
+  get combat() {
+    if (!this._combat) this._combat = new CombatCoordinator(this);
+    return this._combat;
+  }
+  set combat(v) { this._combat = v; }
 
   loadSettings() {
     return SettingsStore.load();
@@ -322,51 +329,18 @@ class Game {
     Audio.play?.('reward.reveal', { rarity: 'rare', x: this.player.x, y: this.player.y });
   }
 
+  // --- Combat coordination delegation shims ---
+  // Level-up flow, boss rewards, and kill drops live in CombatCoordinator
+  // (see js/combat/combat-coordinator.js); these forward the calls Game and
+  // other systems make.
   onPlayerLevelUp(levelsGained = 1) {
-    const count = Math.max(1, Math.floor(Number(levelsGained) || 1));
-    Audio.play?.('reward.reveal', { rarity: 'epic', x: this.player.x, y: this.player.y });
-    for (let i = 0; i < count; i++) this.player.onLeveledUp();
-    this.pendingLevelUps += count;
-    this.presentLevelUpChoice();
+    return this.combat.onPlayerLevelUp(levelsGained);
   }
-
   presentLevelUpChoice() {
-    if (this.pendingLevelUps <= 0) {
-      this.levelUpChoices = null;
-      this.transitionTo(GAME_STATE.PLAYING);
-      return;
-    }
-    this.levelUpChoices = pickItemRewards(this.player.items, 3);
-    if (!this.levelUpChoices.length) {
-      const fallbackCoins = 25 * this.pendingLevelUps;
-      this.player.addCoins(fallbackCoins);
-      this.particles.spawnFloat(this.player.x, this.player.y - 30,
-        `+${fallbackCoins} coins (all items maxed)`, '#ffd84a');
-      this.pendingLevelUps = 0;
-      this.transitionTo(GAME_STATE.PLAYING);
-      return;
-    }
-    this.transitionTo(GAME_STATE.LEVEL_UP);
-    // Big visual feedback
-    this.shake.trigger(3);
-    this.particles.spawnRing(this.player.x, this.player.y, '#7af0ff', 60);
-    this.particles.spawnBurst(this.player.x, this.player.y, '#7af0ff', 20, 200);
+    return this.combat.presentLevelUpChoice();
   }
-
   onBossKill(boss) {
-    this.player.bossKills++;
-    this.player.kills++;
-    // Spawn lootbox
-    const stage = STAGES[this.stage.index];
-    const lb = new Lootbox(boss.x, boss.y, stage.reward.lootbox);
-    this.lootboxes.push(lb);
-    // Award reward
-    this.player.addCoins(stage.reward.coins);
-    this.particles.spawnFloat(boss.x, boss.y - 30,
-      '+' + stage.reward.coins + ' coins', '#ffd84a');
-    // Mark boss killed - stage complete check
-    this.stage.bossKilled = true;
-    GameLifecycle.reportHappyTime();
+    return this.combat.onBossKill(boss);
   }
 
   handleClick(mx, my) {
@@ -404,7 +378,7 @@ class Game {
             Audio.play?.('reward.reveal', { rarity: it.rarity, x: this.player.x, y: this.player.y });
             this.particles.spawnBurst(this.vw / 2, cardY + ch / 2, RARITY[it.rarity.toUpperCase()].color, 30, 250);
             this.levelUpChoices = null;
-            this.pendingLevelUps = Math.max(0, this.pendingLevelUps - 1);
+            this.combat.pendingLevelUps = Math.max(0, this.combat.pendingLevelUps - 1);
             this.presentLevelUpChoice();
             return;
           }

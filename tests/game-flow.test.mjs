@@ -98,7 +98,7 @@ function buildContext() {
     'js/data.js',
     'js/game/canvas-viewport.js',
     'js/game/game-loop.js',
-    'js/game/world-session.js', 'js/world/environment-system.js', 'js/world/environment-renderer.js', 'js/world/terrain-renderer.js', 'js/core/random.js', 'js/game.js'
+    'js/game/world-session.js', 'js/world/environment-system.js', 'js/world/environment-renderer.js', 'js/world/terrain-renderer.js', 'js/core/random.js', 'js/combat/combat-coordinator.js', 'js/game.js'
   ], additions);
   vm.runInContext(`
     function makeGame() {
