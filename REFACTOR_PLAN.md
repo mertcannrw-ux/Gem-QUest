@@ -978,6 +978,14 @@ js/run/run-director.js
 3. `refactor: extract luminous tide and rift frenzy events`
 4. `refactor: reduce run director to event coordination`
 
+> **Status: ✅ COMPLETE** (uncommitted — see handoff). The RunDirector class was
+split via prototype augmentation: `js/run/run-director.js` defines the class
+and core update/event/render flow; combo, bounty, synergy, event-common, and the
+four event modules attach their methods to `RunDirector.prototype`. `mechanics.js`
+now holds only `ELITE_MODIFIERS`, `ITEM_SYNERGIES`, and `applyEliteModifier`.
+`tests/run-director.test.mjs` drives every event without throwing. `npm run verify`
+stays green (109 tests).
+
 ## 17. Phase 10 — Split Enemy, Boss, Mutation, and Projectile Logic
 
 ### Goal

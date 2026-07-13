@@ -2,7 +2,7 @@
 
 > Last updated: **2026-07-13** · based on commit **`43419d3`** (branch `codex/major-refactor`)
 > Authoritative plan: **`REFACTOR_PLAN.md`** (read it before doing any phase).
-> Status: **107 tests green · `npm run verify` green · 11 of 17 plan phases done (one extra).**
+> Status: **109 tests green · `npm run verify` green · 12 of 17 plan phases done (one extra).**
 
 ---
 
@@ -12,9 +12,7 @@ We are mid-way through the behavior-preserving refactor of `js/game.js` (and a f
 other large files) into focused subsystems, per `REFACTOR_PLAN.md`. Every phase so
 far is committed, runs, and keeps `npm run verify` green.
 
-- **You can keep going with the next concrete step: start plan Phase 9** — split `RunDirector`
-  into `js/run/{combo-system,bounty-system,synergies,run-director}.js` + `js/run/events/*`
-  (one event at a time). See `REFACTOR_PLAN.md` Phase 9.
+- **You can keep going with the next concrete step: start plan Phase 10** — split enemy/boss/mutation/projectile logic into `js/combat/{enemy,enemy-ai,boss-ai,mutations,projectile}.js`. See `REFACTOR_PLAN.md` Phase 10.
 - **Golden rule:** small move-and-delegate edits, keep tests green, one phase per
   commit. Never change gameplay/balance/art/visuals. No ES modules (classic
   `<script>` + shared globals only).
@@ -54,6 +52,7 @@ Phase 6 is done and `WorldRenderer`/`MenuBackgroundRenderer` are now extracted t
 | 7 UI split (facade) | ✅ | this Phase 7 commit | `js/ui/ui-core.js` (primitives + click registry) and `js/ui/screens/*` (11 screens) behind a thin `js/ui.js` `UI` facade. `UI.drawMainMenu` etc. remain delegates; `UI.beginFrame`/`clearButtons`/`handleClick` forward to `UICore`. |
 | 8 State handlers | ✅ | this Phase 8 commit | `GAME_STATE_HANDLERS` registry in `js/core/game-state.js`. `Game.update`/`render`/`handleClick`/`handleKey` delegate to per-state handlers; `transitionTo` calls `exit`→assign→`enter`. Lootbox/level-up click routing moved into `PLAYING`/`LEVEL_UP` handlers. |
 | — CombatCoordinator (extra) | ✅ | `43419d3` | `js/combat/combat-coordinator.js` extracted early (level-up flow, boss rewards, kill drops). Not part of the official phase list. |
+| 9 Run director + world events | ✅ | this Phase 9 commit | `js/run/run-director.js` (class + core flow) plus `js/run/{combo-system,bounty-system,synergies,event-common}.js` and `js/run/events/{gem-storm,starfall,luminous-tide,rift-frenzy}.js` via prototype augmentation. `mechanics.js` keeps only mutation data + `applyEliteModifier`. `tests/run-director.test.mjs` drives every event. |
 
 `game.js` is **729 lines** (down from ~1535 at baseline).
 
@@ -82,7 +81,18 @@ js/
   items.js
   lootbox.js
   main.js
-  mechanics.js
+  mechanics.js                          <- mutation data + applyEliteModifier only (Phase 9)
+  run/                                 <- new (Phase 9)
+    run-director.js                    <- new (class + core flow)
+    combo-system.js                    <- new
+    bounty-system.js                   <- new
+    synergies.js                       <- new
+    event-common.js                    <- new
+    events/
+      gem-storm.js                    <- new
+      starfall.js                     <- new
+      luminous-tide.js                <- new
+      rift-frenzy.js                  <- new
   particles.js
   platform/
     meta-progress.js                  ← new
@@ -115,7 +125,14 @@ js/
 ... js/world/world-renderer.js              (Phase 6b, before combat-coordinator)
 ... js/world/menu-background-renderer.js    (Phase 6b, before combat-coordinator)
 ... js/combat/combat-coordinator.js        (right before mechanics.js)
-... js/mechanics.js, js/player.js, js/enemies.js, js/items.js,
+... js/mechanics.js,                  (mutation data + applyEliteModifier only)
+... js/run/run-director.js,           (Phase 9 class definition)
+... js/run/combo-system.js, js/run/bounty-system.js,
+    js/run/synergies.js, js/run/event-common.js,
+    js/run/events/gem-storm.js, js/run/events/starfall.js,
+    js/run/events/luminous-tide.js, js/run/events/rift-frenzy.js,
+    (all run/*.js load AFTER mechanics.js and BEFORE player.js/game.js)
+... js/player.js, js/enemies.js, js/items.js,
     js/lootbox.js, js/stages.js,
     js/ui/ui-core.js,                 (Phase 7, before screens)
     js/ui/screens/*.js (main-menu, help, settings, hud, level-up, stage-complete,
@@ -218,16 +235,14 @@ planned extraction:
 
 ---
 
-## 6. Next concrete step — start plan Phase 9 (run director + world events)
+## 6. Next concrete step — start plan Phase 10 (enemy / boss / mutation / projectile)
 
-Split `RunDirector` into focused subsystems per `REFACTOR_PLAN.md` Phase 9:
-`js/run/combo-system.js`, `js/run/bounty-system.js`, `js/run/synergies.js`,
-`js/run/events/*`, and a thin `js/run/run-director.js` coordinator. Each world event
-becomes independently testable with the `{ start, update, objective, renderBackdrop,
-renderWorld, stop }` interface and a `{ game, player, enemies, particles, shake, audio, rng }`
-context. Move one event at a time (Gem Storm → Starfall → Luminous Tide → Rift Frenzy);
-reduce `RunDirector` to timers + delegation. Keep `npm run verify` green, one commit
-per event.
+Split `Enemy`, `Boss`, `Mutation`, and `Projectile` logic per `REFACTOR_PLAN.md` Phase 10:
+`js/combat/{enemy,enemy-ai,boss-ai,mutations,projectile}.js`. Keep the global
+`Projectile`/`Enemy` names. Boss dispatch moves to a `BOSS_AI` map. `Enemy` keeps entity
+state + `takeDamage`/`die`/status and delegates AI. Move `Projectile` unchanged first,
+then add projectile tests (environment tunneling, player/enemy collision) before
+continuing. Keep `npm run verify` green, one file per commit.
 
 ---
 
@@ -237,7 +252,7 @@ per event.
 |---|---|---|---|
 | 7 | UI split behind `UI` facade | `js/ui/ui-core.js`, `js/ui/screens/*`, `js/ui.js` (facade) | ✅ DONE. `UI.drawMainMenu` etc. are delegates; `UI.beginFrame`/`clearButtons`/`handleClick` forward to `UICore`. Lootbox/level-up hit-testing stays in `Game` for now (later commit). |
 | 8 | State handlers | registry in `js/core/game-state.js` | ✅ DONE. `Game.update`/`render`/`handleClick`/`handleKey` delegate to `GAME_STATE_HANDLERS[state]`; `transitionTo` calls `exit`→assign→`enter`. Lootbox/level-up click routing moved into handlers. |
-| 9 | Run director + world events | `js/run/{combo-system,bounty-system,synergies,run-director}.js`, `js/run/events/*` | Event `context` = `{game,player,enemies,particles,shake,audio,rng}`. Move one event at a time (Gem Storm → Starfall → Luminous Tide → Rift Frenzy). Reduce `RunDirector` to timers + delegation. |
+| 9 | Run director + world events | `js/run/{combo-system,bounty-system,synergies,run-director}.js`, `js/run/events/*` | ✅ DONE (prototype-augmentation split; `mechanics.js` keeps only mutation data + `applyEliteModifier`; `tests/run-director.test.mjs` drives every event). |
 | 10 | Enemy / boss / mutation / projectile | `js/combat/{enemy,enemy-ai,boss-ai,mutations,projectile}.js` | Keep global `Projectile`/`Enemy`. Boss dispatch → `BOSS_AI` map. `Enemy` keeps entity state + `takeDamage`/`die`/status + AI delegation. |
 | 11 | Player combat + drones | `js/combat/{player-combat,drone-system}.js` | Keep progression/state on `Player`; move target selection + projectile construction + drones out. Preserve `player.drones` getter. |
 | 12 | Audio facade split | `js/audio/{audio-context,mixer,music,ambience,sfx,audio}.js` | Inventory `Audio.*` calls first; facade contract test; `Audio.sync(game)` builds a scene description, not the whole `game`. Preserve mute-around-rewarded-ad. |

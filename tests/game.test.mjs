@@ -221,7 +221,7 @@ test('enemy rendering never depends on the gameplay update context', () => {
 
 test('mutations scale enemy bodies and rare mutations expose unique mechanics', () => {
   const ctx = loadScripts(
-    ['js/utils.js', 'js/core/random.js', 'js/mechanics.js', 'js/enemies.js'],
+    ['js/utils.js', 'js/core/random.js', 'js/mechanics.js', 'js/run/run-director.js', 'js/run/combo-system.js', 'js/run/bounty-system.js', 'js/run/synergies.js', 'js/run/event-common.js', 'js/run/events/gem-storm.js', 'js/run/events/starfall.js', 'js/run/events/luminous-tide.js', 'js/run/events/rift-frenzy.js', 'js/enemies.js'],
     {
       ENEMIES: {
         slime: { id: 'slime', name: 'Slime', hp: 20, speed: 40, dmg: 5, xp: 2, coin: 1, size: 20, ai: 'chase' }
@@ -961,7 +961,7 @@ test('a fatal game-loop error stops further animation frames', () => {
 
 test('Starfall synergy creates a secondary blast with damage', () => {
   const ctx = loadScripts(
-    ['js/utils.js', 'js/core/random.js', 'js/mechanics.js'],
+    ['js/utils.js', 'js/core/random.js', 'js/mechanics.js', 'js/run/run-director.js', 'js/run/combo-system.js', 'js/run/bounty-system.js', 'js/run/synergies.js', 'js/run/event-common.js', 'js/run/events/gem-storm.js', 'js/run/events/starfall.js', 'js/run/events/luminous-tide.js', 'js/run/events/rift-frenzy.js'],
     {
       ITEMS_RUNTIME: {},
       STAGES: []
@@ -990,7 +990,7 @@ test('Starfall synergy creates a secondary blast with damage', () => {
 
 test('Starfall world event telegraphs before damaging its impact zone', () => {
   const ctx = loadScripts(
-    ['js/utils.js', 'js/core/random.js', 'js/mechanics.js'],
+    ['js/utils.js', 'js/core/random.js', 'js/mechanics.js', 'js/run/run-director.js', 'js/run/combo-system.js', 'js/run/bounty-system.js', 'js/run/synergies.js', 'js/run/event-common.js', 'js/run/events/gem-storm.js', 'js/run/events/starfall.js', 'js/run/events/luminous-tide.js', 'js/run/events/rift-frenzy.js'],
     {
       ITEMS_RUNTIME: {},
       STAGES: [],
@@ -1027,7 +1027,7 @@ test('Starfall world event telegraphs before damaging its impact zone', () => {
 
 test('Rift Frenzy portals teleport the player and lightning damages enemies along the route', () => {
   const ctx = loadScripts(
-    ['js/utils.js', 'js/core/random.js', 'js/mechanics.js'],
+    ['js/utils.js', 'js/core/random.js', 'js/mechanics.js', 'js/run/run-director.js', 'js/run/combo-system.js', 'js/run/bounty-system.js', 'js/run/synergies.js', 'js/run/event-common.js', 'js/run/events/gem-storm.js', 'js/run/events/starfall.js', 'js/run/events/luminous-tide.js', 'js/run/events/rift-frenzy.js'],
     {
       Audio: { riftTeleport() {} },
       ITEMS_RUNTIME: {},
@@ -1080,7 +1080,7 @@ test('Rift Frenzy portals teleport the player and lightning damages enemies alon
 
 test('Gem Storm crystals reward movement and discharge chain lightning', () => {
   const ctx = loadScripts(
-    ['js/utils.js', 'js/core/random.js', 'js/mechanics.js'],
+    ['js/utils.js', 'js/core/random.js', 'js/mechanics.js', 'js/run/run-director.js', 'js/run/combo-system.js', 'js/run/bounty-system.js', 'js/run/synergies.js', 'js/run/event-common.js', 'js/run/events/gem-storm.js', 'js/run/events/starfall.js', 'js/run/events/luminous-tide.js', 'js/run/events/rift-frenzy.js'],
     {
       Audio: { eventCollect() {}, eventComplete() {} },
       ITEMS_RUNTIME: {},
@@ -1126,7 +1126,7 @@ test('Gem Storm crystals reward movement and discharge chain lightning', () => {
 
 test('Starfall circles become friendly and stronger after player attunement', () => {
   const ctx = loadScripts(
-    ['js/utils.js', 'js/core/random.js', 'js/mechanics.js'],
+    ['js/utils.js', 'js/core/random.js', 'js/mechanics.js', 'js/run/run-director.js', 'js/run/combo-system.js', 'js/run/bounty-system.js', 'js/run/synergies.js', 'js/run/event-common.js', 'js/run/events/gem-storm.js', 'js/run/events/starfall.js', 'js/run/events/luminous-tide.js', 'js/run/events/rift-frenzy.js'],
     {
       Audio: { eventAttune() {}, eventImpact() {} },
       ITEMS_RUNTIME: {},
@@ -1170,7 +1170,7 @@ test('Starfall circles become friendly and stronger after player attunement', ()
 
 test('Luminous Tide wells heal, purge enemies, and grant ascension', () => {
   const ctx = loadScripts(
-    ['js/utils.js', 'js/core/random.js', 'js/mechanics.js'],
+    ['js/utils.js', 'js/core/random.js', 'js/mechanics.js', 'js/run/run-director.js', 'js/run/combo-system.js', 'js/run/bounty-system.js', 'js/run/synergies.js', 'js/run/event-common.js', 'js/run/events/gem-storm.js', 'js/run/events/starfall.js', 'js/run/events/luminous-tide.js', 'js/run/events/rift-frenzy.js'],
     {
       Audio: { eventAttune() {}, eventComplete() {} },
       ITEMS_RUNTIME: {},
