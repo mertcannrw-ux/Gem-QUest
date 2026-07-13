@@ -122,7 +122,8 @@ class Player {
     if (this.invuln > 0 || !this.alive) return;
     const s = this.stats();
     // Block chance: chance to negate damage entirely
-    if (s.blockChance > 0 && Math.random() < s.blockChance) {
+    const simRand = () => (this.game?.simulationRandom?.next?.() ?? Math.random());
+    if (s.blockChance > 0 && simRand() < s.blockChance) {
       // Visual feedback for block
       if (this.game) {
         this.game.particles.spawnSparkBurst(this.x, this.y - 8, '#a8a29e', 4);
@@ -307,7 +308,8 @@ class Player {
     for (let i = 0; i < n; i++) {
       const t = n > 1 ? (i / (n - 1) - 0.5) : 0;
       const a = baseAngle + t * spread;
-      const crit = Math.random() < s.critChance;
+      const simRand = () => (this.game?.simulationRandom?.next?.() ?? Math.random());
+      const crit = simRand() < s.critChance;
       const isBoss = target.boss;
       const dmg = s.damage * (1 + s.damageMult) * (crit ? s.critMult : 1)
                 * (isBoss ? 1 + s.bossDamage : 1);

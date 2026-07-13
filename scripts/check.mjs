@@ -109,7 +109,14 @@ const declarations = [
 // A declaration is considered dead if it appears exactly once across all runtime
 // files (its declaration site). Cross-file duplicates are expected in the
 // classic-script IIFE model and are not flagged.
+//
+// Some declarations are intentionally exposed for testing or future use:
+const intentionalPublicApis = new Set([
+  'makeSeededRandom',  // exported for test determinism
+  'seededNext',        // named function expression inside makeSeededRandom
+]);
 const deadDeclarations = [...new Set(declarations)].filter((name) => {
+  if (intentionalPublicApis.has(name)) return false;
   const escaped = name.replace(/[$]/g, '\\$&');
   return (strippedRuntime.match(new RegExp(`\\b${escaped}\\b`, 'g')) || []).length === 1;
 });

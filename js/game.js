@@ -44,6 +44,12 @@ class Game {
     // remain available through thin getters/setters.
     this.world = new WorldSession();
 
+    // Random streams — simulation (combat, spawning, events, rewards) and
+    // visual (particles, animation phases, audio variation).
+    // The visual stream must not affect simulation outcomes.
+    this.simulationRandom = createProductionRandom();
+    this.visualRandom = createProductionRandom();
+
     this.player = null;
     this.stage = null;
     this.enemies = [];

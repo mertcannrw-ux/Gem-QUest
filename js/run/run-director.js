@@ -67,7 +67,8 @@ class RunDirector {
         this.showBanner('EVENT COMPLETE', this.activeEvent.name, '#a7f3d0', 2.2);
         this.clearEventState();
         this.activeEvent = null;
-        this.eventTimer = 20 + Math.random() * 10;
+        const rng = this.game.simulationRandom || { next: Math.random, range(a,b) { return a + Math.random() * (b - a); } };
+        this.eventTimer = 20 + rng.range(0, 10);
       }
     } else if (this.eventTimer <= 0 && !this.game.stage.bossSpawned) {
       this.startRandomEvent();
@@ -95,10 +96,11 @@ class RunDirector {
       const types = STAGES[g.stage.index].waves[Math.min(g.stage.waveIdx, STAGES[g.stage.index].waves.length - 1)].spawns;
       if (types?.length) {
         for (let i = 0; i < 2; i++) {
-          const enemy = g.stage.spawnEnemy(types[Math.floor(Math.random() * types.length)].type, true);
+          const rngEv = g.simulationRandom || { next: Math.random, range(a,b) { return a + Math.random() * (b - a); } };
+          const enemy = g.stage.spawnEnemy(types[Math.floor(rngEv.next() * types.length)].type, true);
           if (enemy) {
             this.eventPortals.push({
-              x: enemy.x, y: enemy.y, life: 1.25, maxLife: 1.25, phase: Math.random() * Math.PI * 2
+              x: enemy.x, y: enemy.y, life: 1.25, maxLife: 1.25, phase: rngEv.range(0, Math.PI * 2)
             });
             g.particles.spawnBurst(enemy.x, enemy.y, '#fb7185', 14, 150);
           }
@@ -108,12 +110,13 @@ class RunDirector {
     } else if (e.id === 'meteor') {
       this.eventPulse = 1.55;
       const targets = g.enemies.filter(x => x.alive);
-      const target = targets.length && Math.random() < 0.68
-        ? targets[Math.floor(Math.random() * targets.length)]
-        : { x: p.x + Utils.range(-190, 190), y: p.y + Utils.range(-150, 150) };
+      const rng2 = g.simulationRandom || { next: Math.random, range(a,b) { return a + Math.random() * (b - a); } };
+      const target = targets.length && rng2.next() < 0.68
+        ? targets[Math.floor(rng2.next() * targets.length)]
+        : { x: p.x + rng2.range(-190, 190), y: p.y + rng2.range(-150, 150) };
       this.eventStrikes.push({
         x: target.x, y: target.y, delay: 1.24, maxDelay: 1.24, life: 0.78, maxLife: 0.78, radius: 108,
-        impacted: false, charge: 0, chargeNeeded: 0.42, attuned: false, playerInside: false, phase: Math.random() * Math.PI * 2
+        impacted: false, charge: 0, chargeNeeded: 0.42, attuned: false, playerInside: false, phase: rng2.range(0, Math.PI * 2)
       });
     } else if (e.id === 'sanctuary') {
       this.eventPulse = 0.75;
@@ -142,12 +145,13 @@ class RunDirector {
         description: 'Awaken every celestial well to trigger Luminous Ascension'
       }
     ];
-    this.activeEvent = events[Math.floor(Math.random() * events.length)];
+    const rngR = this.game.simulationRandom || { next: Math.random };
+    this.activeEvent = events[Math.floor(rngR.next() * events.length)];
     this.eventDuration = this.activeEvent.duration;
     this.eventMaxDuration = this.activeEvent.duration;
     this.eventElapsed = 0;
     this.eventPulse = 0;
-    this.eventSeed = Math.random() * 1000;
+    this.eventSeed = rngR.next() * 1000;
     this.eventPortals.length = 0;
     this.eventStrikes.length = 0;
     this.eventCrystals.length = 0;

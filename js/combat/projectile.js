@@ -71,7 +71,8 @@ class Projectile {
         if (Utils.distO(this, e) < this.size + e.size * 0.5) {
           this.hitSet.add(e);
           // Instant kill
-          if (Math.random() < (this.instantKill || 0)) {
+          const rng = game.simulationRandom || { next: Math.random };
+          if (rng.next() < (this.instantKill || 0)) {
             e.hp = 0;
             e.die(this.owner, game);
           } else {
@@ -94,7 +95,7 @@ class Projectile {
           }
 
           // Chain lightning
-          if (this.chain > 0 && Math.random() < this.chain) {
+          if (this.chain > 0 && rng.next() < this.chain) {
             let next = null, best = Infinity;
             for (const e2 of game.enemies) {
               if (e2 === e || !e2.alive || this.hitSet.has(e2)) continue;
@@ -125,7 +126,7 @@ class Projectile {
       }
       // Return boomerang
       if (this.returnChance > 0 && this.life < 2 && !this.returning
-          && Math.random() < this.returnChance) {
+          && rng.next() < this.returnChance) {
         this.returning = true;
       }
       if (this.returning) {
