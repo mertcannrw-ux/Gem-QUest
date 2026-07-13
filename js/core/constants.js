@@ -15,6 +15,8 @@ const LOGICAL_HEIGHT = 720;
 // render a detailed frame and huge displays stay within budget.
 /** @type {number} */
 const MAX_RENDER_SCALE = 3;
+
+
 const MIN_RENDER_SCALE = 1;
 
 // A frame longer than this (seconds) is clamped to keep the simulation stable

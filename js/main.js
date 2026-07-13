@@ -106,7 +106,7 @@
 
   // Keep production state private. Local builds can opt into diagnostics.
   const debugHost = location.hostname === '127.0.0.1' || location.hostname === 'localhost';
-  if (debugHost) window.__game = game;
+  if (debugHost) window.__gemQuestDebug = { game };
 
   // Auto-pause when tab hidden (Crazy Games pauses for ads, but we
   // should also pause when the tab is backgrounded to save CPU).
