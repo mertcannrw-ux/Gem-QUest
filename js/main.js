@@ -9,20 +9,31 @@
   const bootText = document.getElementById('boot-text');
   const bootStart = document.getElementById('boot-start');
   const bootSpinner = document.querySelector('.boot-spinner');
+  const fatalScreen = document.getElementById('fatal-screen');
+  const fatalMessage = document.getElementById('fatal-message');
+  const fatalRetry = document.getElementById('fatal-retry');
 
   function setBoot(t) { if (bootText) bootText.textContent = t; }
-
-  // Compute a sane upper bound for totalCoins from the shop economy.
-  // Tampered localStorage values are clamped to this to prevent coin
-  // inflation exploits.
   function computeMaxCoins() {
     let total = 0;
-    for (const u of (typeof SHOP_UPGRADES !== 'undefined' ? SHOP_UPGRADES : [])) {
-      for (let lvl = 0; lvl < (u.max || 0); lvl++) total += Math.floor(u.cost * (1 + lvl * 0.5));
+    for (const upgrade of SHOP_UPGRADES) {
+      for (let level = 0; level < upgrade.max; level++) {
+        total += Math.floor(upgrade.cost * (1 + level * 0.5));
+      }
     }
     return Math.max(1000, Math.floor(total * 1.5));
   }
   const MAX_TOTAL_COINS = computeMaxCoins();
+  function showFatal(message = 'An unexpected error stopped the game safely.') {
+    if (fatalMessage) fatalMessage.textContent = message;
+    fatalScreen?.classList.remove('hidden');
+    fatalRetry?.focus();
+  }
+
+  fatalRetry?.addEventListener('click', () => location.reload());
+  window.addEventListener('gemquest:fatal', (event) => {
+    showFatal(event.detail?.message);
+  });
 
   try {
     setBoot('Initializing SDK...');
@@ -32,15 +43,26 @@
     console.warn('SDK init error:', e);
   }
 
-  setBoot('Generating art...');
-  // Build all procedural sprites (no network requests, fast).
-  try { Sprite.buildAll(); }
-  catch (e) { console.warn('Sprite build failed:', e); }
-
-  setBoot('Opening the rift...');
+  setBoot('Generating sprites...');
+  try {
+    Sprite.buildAll();
+  } catch (error) {
+    console.error('Sprite build failed:', error);
+    showFatal('The game art could not be prepared. Reload to try again.');
+    SDK.loadingStop();
+    return;
+  }
 
   setBoot('Restoring progress...');
-  const game = new Game(canvas);
+  let game;
+  try {
+    game = new Game(canvas);
+  } catch (error) {
+    console.error('Game initialization failed:', error);
+    showFatal('The game could not initialize safely. Reload to try again.');
+    SDK.loadingStop();
+    return;
+  }
 
   // Load persistent state
   try {
@@ -50,7 +72,8 @@
       const max = await SDK.load('maxStageReached', 0);
       save = { version: 1, totalCoins: total, maxStageReached: max, shopLevels: {} };
     }
-    game.run.totalCoins = Math.min(MAX_TOTAL_COINS, Math.max(0, Math.floor(Number(save.totalCoins) || 0)));
+    const loadedCoins = Math.floor(Number(save.totalCoins) || 0);
+    game.run.totalCoins = Utils.clamp(loadedCoins, 0, MAX_TOTAL_COINS);
     game.run.maxStageReached = Utils.clamp(
       Math.floor(Number(save.maxStageReached) || 0), 0, STAGES.length - 1
     );
@@ -94,16 +117,17 @@
     // gesture, since the policy requires a click before audio plays.
     if (typeof Audio !== 'undefined' && Audio.resume) Audio.resume();
   }
-  bootScreen.addEventListener('click', dismissBoot);
-  bootScreen.addEventListener('touchend', dismissBoot);
+  bootScreen?.addEventListener('click', dismissBoot);
+  bootScreen?.addEventListener('touchend', dismissBoot);
   document.addEventListener('touchend', () => Audio.resume(), { passive: true });
   // Also allow Enter / Space.
   window.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' || e.key === ' ') dismissBoot();
   });
 
-  // Expose for debugging
-  window.__game = game;
+  // Keep production state private. Local builds can opt into diagnostics.
+  const debugHost = location.hostname === '127.0.0.1' || location.hostname === 'localhost';
+  if (debugHost) window.__game = game;
 
   // Auto-pause when tab hidden (Crazy Games pauses for ads, but we
   // should also pause when the tab is backgrounded to save CPU).

@@ -93,11 +93,22 @@ class StageManager {
     const enemy = new Enemy(type, x, y);
     const eliteChance = 0.035 + this.index * 0.018 + Math.min(0.08, this.stageTime / 900);
     if (forceElite || (!enemy.boss && Math.random() < eliteChance)) {
-      const modifier = ELITE_MODIFIERS[Math.floor(Math.random() * ELITE_MODIFIERS.length)];
+      // Aberrant mutations are intentionally headline moments: roughly one
+      // in forty mutations early, rising slightly in later realms.
+      const rareChance = forceElite ? 0.08 : 0.025 + this.index * 0.012;
+      const pool = Math.random() < rareChance ? RARE_MUTATIONS : COMMON_MUTATIONS;
+      const modifier = pool[Math.floor(Math.random() * pool.length)];
       applyEliteModifier(enemy, modifier);
-      this.game.particles.spawnRing(x, y, modifier.color, 45);
+      this.game.particles.spawnRing(x, y, modifier.color, enemy.size * (modifier.rare ? 2.4 : 1.7));
+      this.game.particles.spawnSparkBurst(x, y, modifier.color, modifier.rare ? 22 : 9);
+      if (modifier.rare) {
+        this.game.director?.showBanner('ABERRANT MUTATION', modifier.name, modifier.color, 2.6);
+        this.game.director?.flashScreen(modifier.color, 0.18);
+        this.game.shake.trigger(5);
+      }
     }
     this.game.enemies.push(enemy);
+    return enemy;
   }
 
   spawnBoss(type) {
@@ -106,7 +117,7 @@ class StageManager {
     const a = -Math.PI / 2; // above player
     const d = 200;
     this.game.enemies.push(new Enemy(type, p.x + Math.cos(a) * d, p.y + Math.sin(a) * d));
-    Audio.bossSpawn();
+    Audio.play?.('boss.spawn', { x: p.x, y: p.y - 200 });
     this.game.shake.trigger(6);
   }
 

@@ -7,6 +7,8 @@
  */
 
 const UI = (() => {
+  const logicalWidth = (ctx) => ctx.canvas.logicalWidth || ctx.canvas.width;
+  const logicalHeight = (ctx) => ctx.canvas.logicalHeight || ctx.canvas.height;
   const buttons = []; // active buttons this frame
   const choices = []; // level-up choices this frame
   const lootboxes = []; // open lootboxes this frame
@@ -149,19 +151,19 @@ const UI = (() => {
     ctx.save();
     ctx.shadowColor = '#fbbf24';
     ctx.shadowBlur = pulse;
-    text(ctx, 'GEM QUEST', ctx.canvas.width / 2, titleY, {
+    text(ctx, 'GEM QUEST', logicalWidth(ctx) / 2, titleY, {
       align: 'center', font: '900 76px Trebuchet MS',
       stroke: '#12051f', lineWidth: 8, color: '#fef3c7'
     });
     ctx.restore();
-    text(ctx, 'ARENA SURVIVAL', ctx.canvas.width / 2, titleY + 70, {
+    text(ctx, 'ARENA SURVIVAL', logicalWidth(ctx) / 2, titleY + 70, {
       align: 'center', font: 'bold 18px Trebuchet MS', color: '#67e8f9', stroke: '#000'
     });
 
-    const cx = ctx.canvas.width / 2;
+    const cx = logicalWidth(ctx) / 2;
 
     // Dark glass control panel keeps the dramatic focal gem visible.
-    const panelX = cx - 205, panelY = 350, panelW = 410, panelH = 342;
+    const panelX = cx - 215, panelY = 330, panelW = 430, panelH = 362;
     const pg = ctx.createLinearGradient(panelX, panelY, panelX, panelY + panelH);
     pg.addColorStop(0, 'rgba(21,18,52,.92)');
     pg.addColorStop(1, 'rgba(4,7,19,.96)');
@@ -169,17 +171,26 @@ const UI = (() => {
     ctx.beginPath(); ctx.roundRect(panelX, panelY, panelW, panelH, 18); ctx.fill();
     ctx.strokeStyle = 'rgba(103,232,249,.45)'; ctx.lineWidth = 2; ctx.stroke();
 
-    const bw = 260, bh = 48, gap = 12;
-    let by = 370;
+    const bw = 280, bh = 48, gap = 12;
+    let by = 350;
     if (game.run.totalCoins > 0) {
-      button(ctx, cx - bw / 2, by, bw, bh, 'CONTINUE', () => game.continueRun());
+      const splitW = 190;
+      button(ctx, cx - splitW - 6, by, splitW, bh, 'CONTINUE', () => game.continueRun());
+      button(ctx, cx + 6, by, splitW, bh, 'NEW GAME', () => game.startNewRun());
+      by += bh + gap;
+    } else {
+      button(ctx, cx - bw / 2, by, bw, bh, 'NEW GAME', () => game.startNewRun());
       by += bh + gap;
     }
-    button(ctx, cx - bw / 2, by, bw, bh, 'NEW GAME', () => game.startNewRun());
+
+    button(ctx, cx - bw / 2, by, bw, bh, '⚒  ARCANE FORGE', () => game.openShop(), {
+      color: '#fef3c7',
+      border: '#fbbf24',
+      font: 'bold 18px sans-serif'
+    });
     by += bh + gap;
 
     // Stage select — colored borders for all stages (locked ones dimmed)
-    by += 2;
     text(ctx, '— STAGES —', cx, by, { align: 'center', font: 'bold 14px sans-serif', color: '#7af0ff' });
     by += 24;
     const sw = 72, sh = 52;
@@ -218,31 +229,39 @@ const UI = (() => {
       }
     }
 
-    by += sh + 14;
+    by += sh + 12;
     // Settings row
     const sBtnW = 140;
-    button(ctx, cx - sBtnW - 5, by, sBtnW, 40, Audio.isMuted() ? 'UNMUTE' : 'MUTE',
-      () => { Audio.setMuted(!Audio.isMuted()); });
+    button(ctx, cx - sBtnW - 5, by, sBtnW, 40, 'SETTINGS', () => game.openSettings());
     button(ctx, cx + 5, by, sBtnW, 40, 'HOW TO PLAY', () => game.showHelp());
 
-    by += 48;
-    if (game.run.totalCoins > 0) {
-      drawCoinIcon(ctx, cx - 70, by - 2, 2);
-      text(ctx, Utils.formatNum(game.run.totalCoins),
-        cx, by, { align: 'center', font: 'bold 22px sans-serif', color: '#ffd84a' });
-    }
+    // Compact global music control in the expected top-right position.
+    const musicOn = !Audio.isMuted() && game.settings.music > 0.01;
+    button(ctx, logicalWidth(ctx) - 174, 24, 150, 38,
+      musicOn ? 'MUSIC  ON' : 'MUSIC  OFF',
+      () => game.toggleMusic(), {
+        font: 'bold 12px Trebuchet MS',
+        border: musicOn ? '#a78bfa' : '#64748b',
+        color: musicOn ? '#ede9fe' : '#94a3b8',
+        bg: musicOn ? '#312452' : '#161925'
+      });
+
+    by += 49;
+    drawCoinIcon(ctx, cx - 82, by - 2, 2);
+    text(ctx, `${Utils.formatNum(game.run.totalCoins)}  AVAILABLE`,
+      cx + 10, by, { align: 'center', font: 'bold 18px sans-serif', color: '#ffd84a' });
 
     // Footer
     text(ctx, 'v2.0  •  MOVE WASD/ZQSD  •  SPACE DASH  •  E ARCANE NOVA',
-      ctx.canvas.width / 2, ctx.canvas.height - 24,
+      logicalWidth(ctx) / 2, logicalHeight(ctx) - 24,
       { align: 'center', font: '12px sans-serif', color: '#7af0ff' });
   }
 
   // ===== How To Play =====
   function drawHelp(ctx, game) {
     ctx.fillStyle = 'rgba(0,0,0,0.85)';
-    ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
-    const cx = ctx.canvas.width / 2;
+    ctx.fillRect(0, 0, logicalWidth(ctx), logicalHeight(ctx));
+    const cx = logicalWidth(ctx) / 2;
     text(ctx, 'HOW TO PLAY', cx, 80, { align: 'center', font: 'bold 36px sans-serif', color: '#7af0ff' });
     const lines = [
       'Move:  WASD or ZQSD',
@@ -251,6 +270,8 @@ const UI = (() => {
       'Collect gems to level up',
       'Pick up coins to spend in the shop',
       'Bosses drop lootboxes — pick the best item!',
+      'Mutated enemies are larger, stronger, and richly rewarded',
+      'Rare aberrations wield unique battlefield abilities',
       'Stack items for powerful synergies',
       'Upgrade between stages to grow stronger',
       '',
@@ -261,7 +282,7 @@ const UI = (() => {
       text(ctx, l, cx, y, { align: 'center', font: '18px sans-serif', color: '#fff' });
       y += 32;
     }
-    button(ctx, cx - 80, ctx.canvas.height - 80, 160, 44, 'GOT IT', () => game.closeHelp(),
+    button(ctx, cx - 80, logicalHeight(ctx) - 80, 160, 44, 'GOT IT', () => game.closeHelp(),
       { font: 'bold 18px sans-serif' });
   }
 
@@ -269,8 +290,15 @@ const UI = (() => {
   function drawHUD(ctx, game) {
     const p = game.player;
     const s = game.stage;
-    const w = ctx.canvas.width;
-    const h = ctx.canvas.height;
+    const w = logicalWidth(ctx);
+    const h = logicalHeight(ctx);
+    if (game.settings?.highContrast) {
+      ctx.save();
+      ctx.strokeStyle = 'rgba(255,255,255,.18)';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(8, 8, w - 16, h - 16);
+      ctx.restore();
+    }
 
     // Top-left: HP bar with segmented look
     const hpW = 240, hpH = 24;
@@ -382,17 +410,21 @@ const UI = (() => {
     text(ctx, `${itemCount} items  •  ${p.drones ? p.drones.length : 0} drones`,
       20, h - 26, { font: '12px sans-serif', color: '#7af0ff' });
 
-    // Mini-instructions first 8 seconds
+    // Mini-instructions first 8 seconds. Keep these at the top center so
+    // they remain readable above the world and never overlap the action deck.
     if (game.time < 8) {
+      const tipW = Math.min(440, Math.max(220, w - 360));
+      const tipX = w / 2 - tipW / 2;
+      const tipY = 16;
       ctx.fillStyle = 'rgba(0,0,0,0.55)';
-      ctx.fillRect(w / 2 - 220, h - 76, 440, 40);
+      ctx.fillRect(tipX, tipY, tipW, 40);
       ctx.strokeStyle = '#7af0ff';
       ctx.lineWidth = 1;
-      ctx.strokeRect(w / 2 - 220, h - 76, 440, 40);
+      ctx.strokeRect(tipX, tipY, tipW, 40);
       const tip = game.time < 4
         ? 'WASD/ZQSD to move'
         : 'Weapons fire automatically — just survive!';
-      text(ctx, tip, w / 2, h - 56,
+      text(ctx, tip, w / 2, tipY + 20,
         { align: 'center', baseline: 'middle', font: 'bold 14px sans-serif', color: '#7af0ff' });
     }
 
@@ -437,9 +469,38 @@ const UI = (() => {
     }
 
     if (game.director.activeEvent) {
-      text(ctx, `${game.director.activeEvent.name}  ${game.director.eventDuration.toFixed(1)}s`,
-        w / 2, 174, { align: 'center', font: 'bold 14px Trebuchet MS',
-          color: game.director.activeEvent.color, stroke: '#030712', lineWidth: 5 });
+      const event = game.director.activeEvent;
+      const remaining = Math.max(0, game.director.eventDuration);
+      const ratio = Utils.clamp(remaining / (game.director.eventMaxDuration || event.duration), 0, 1);
+      const boxW = 340;
+      const boxX = w / 2 - boxW / 2;
+      ctx.save();
+      ctx.fillStyle = 'rgba(3,7,18,.82)';
+      ctx.beginPath(); ctx.roundRect(boxX, 162, boxW, 58, 10); ctx.fill();
+      ctx.strokeStyle = event.color;
+      ctx.lineWidth = 1.5;
+      ctx.shadowColor = event.color;
+      ctx.shadowBlur = 10;
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+      text(ctx, `${event.name}  ${remaining.toFixed(1)}s`,
+        w / 2, 170, { align: 'center', font: '900 14px Trebuchet MS',
+          color: event.color, stroke: '#030712', lineWidth: 4 });
+      text(ctx, event.description || '',
+        w / 2, 188, { align: 'center', font: '10px Trebuchet MS',
+          color: '#e2e8f0', stroke: '#030712', lineWidth: 3 });
+      text(ctx, game.director.eventObjective?.() || '',
+        w / 2, 202, { align: 'center', font: '900 9px Trebuchet MS',
+          color: '#ffffff', stroke: '#030712', lineWidth: 3 });
+      ctx.fillStyle = 'rgba(15,23,42,.9)';
+      ctx.fillRect(boxX + 10, 214, boxW - 20, 3);
+      const eventBar = ctx.createLinearGradient(boxX + 10, 0, boxX + boxW - 10, 0);
+      eventBar.addColorStop(0, '#fff');
+      eventBar.addColorStop(.2, event.color);
+      eventBar.addColorStop(1, event.color);
+      ctx.fillStyle = eventBar;
+      ctx.fillRect(boxX + 10, 214, (boxW - 20) * ratio, 3);
+      ctx.restore();
     }
 
     if (game.director.synergies.length) {
@@ -451,6 +512,124 @@ const UI = (() => {
         sy += 18;
       }
     }
+  }
+
+  function slider(ctx, game, x, y, w, label, id, value, color = '#8b5cf6') {
+    const trackY = y + 37;
+    const hover = ctx._hover && pointInRect(ctx._mouse, x, trackY - 12, w, 30);
+    text(ctx, label, x, y, {
+      font: 'bold 13px Trebuchet MS', color: '#e2e8f0'
+    });
+    text(ctx, `${Math.round(value * 100)}%`, x + w, y, {
+      align: 'right', font: '900 13px Trebuchet MS', color
+    });
+    ctx.fillStyle = '#090b17';
+    ctx.beginPath(); ctx.roundRect(x, trackY, w, 8, 4); ctx.fill();
+    const glow = ctx.createLinearGradient(x, trackY, x + w, trackY);
+    glow.addColorStop(0, '#67e8f9');
+    glow.addColorStop(1, color);
+    ctx.fillStyle = glow;
+    ctx.beginPath(); ctx.roundRect(x, trackY, Math.max(4, w * value), 8, 4); ctx.fill();
+    const knobX = x + w * value;
+    ctx.save();
+    ctx.shadowColor = color; ctx.shadowBlur = hover ? 18 : 10;
+    ctx.fillStyle = '#f8fafc';
+    ctx.beginPath(); ctx.arc(knobX, trackY + 4, hover ? 9 : 8, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = color; ctx.lineWidth = 3; ctx.stroke();
+    ctx.restore();
+    buttons.push({
+      x, y: trackY - 14, w, h: 36,
+      onClick: (mx) => game.setSetting(id, Utils.clamp((mx - x) / w, 0, 1)),
+      slider: true
+    });
+  }
+
+  function toggle(ctx, game, x, y, w, label, id, enabled, color = '#67e8f9') {
+    const h = 42;
+    const hover = ctx._hover && pointInRect(ctx._mouse, x, y, w, h);
+    ctx.fillStyle = hover ? 'rgba(51,65,85,.55)' : 'rgba(15,23,42,.72)';
+    ctx.beginPath(); ctx.roundRect(x, y, w, h, 10); ctx.fill();
+    ctx.strokeStyle = enabled ? color : 'rgba(100,116,139,.45)';
+    ctx.lineWidth = 1.5; ctx.stroke();
+    text(ctx, label, x + 14, y + h / 2, {
+      baseline: 'middle', font: 'bold 12px Trebuchet MS',
+      color: enabled ? '#f8fafc' : '#94a3b8'
+    });
+    const tx = x + w - 58, ty = y + 10;
+    ctx.fillStyle = enabled ? color : '#334155';
+    ctx.beginPath(); ctx.roundRect(tx, ty, 44, 22, 11); ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.arc(tx + (enabled ? 33 : 11), ty + 11, 8, 0, Math.PI * 2); ctx.fill();
+    buttons.push({ x, y, w, h, onClick: () => game.setSetting(id, !enabled) });
+  }
+
+  function drawSettings(ctx, game) {
+    const w = logicalWidth(ctx), h = logicalHeight(ctx);
+    const cx = w / 2;
+    ctx.fillStyle = 'rgba(2,4,14,.84)';
+    ctx.fillRect(0, 0, w, h);
+
+    const panelX = 170, panelY = 48, panelW = w - 340, panelH = h - 96;
+    const panel = ctx.createLinearGradient(panelX, panelY, panelX, panelY + panelH);
+    panel.addColorStop(0, 'rgba(30,28,65,.98)');
+    panel.addColorStop(1, 'rgba(7,10,27,.99)');
+    ctx.fillStyle = panel;
+    ctx.beginPath(); ctx.roundRect(panelX, panelY, panelW, panelH, 26); ctx.fill();
+    ctx.strokeStyle = 'rgba(139,92,246,.7)'; ctx.lineWidth = 2; ctx.stroke();
+
+    text(ctx, 'SETTINGS', cx, 70, {
+      align: 'center', font: '900 38px Trebuchet MS',
+      color: '#f5f3ff', stroke: '#0b0616', lineWidth: 6
+    });
+    text(ctx, 'AUDIO  •  ACCESSIBILITY  •  EFFECTS', cx, 113, {
+      align: 'center', font: 'bold 11px Trebuchet MS', color: '#a5b4fc'
+    });
+
+    const leftX = panelX + 50, rightX = cx + 36, colW = 360;
+    text(ctx, 'AUDIO MIX', leftX, 154, {
+      font: '900 16px Trebuchet MS', color: '#67e8f9'
+    });
+    slider(ctx, game, leftX, 174, colW, 'MASTER VOLUME', 'master', game.settings.master, '#67e8f9');
+    slider(ctx, game, leftX, 232, colW, 'MUSIC VOLUME', 'music', game.settings.music, '#a78bfa');
+    slider(ctx, game, leftX, 290, colW, 'SOUND EFFECTS', 'sfx', game.settings.sfx, '#fbbf24');
+    slider(ctx, game, leftX, 348, colW, 'AMBIENCE', 'ambience', game.settings.ambience, '#4ade80');
+
+    text(ctx, 'SOUNDTRACK', leftX, 414, {
+      font: '900 16px Trebuchet MS', color: '#c4b5fd'
+    });
+    const candidates = Audio.getMusicCandidates?.() || [];
+    const active = Audio.getMusicCandidate?.();
+    candidates.forEach((candidate, i) => {
+      const selected = active === candidate.id;
+      button(ctx, leftX, 440 + i * 36, colW, 30,
+        `${selected ? '◆  ' : ''}${candidate.name.toUpperCase()}`,
+        () => Audio.setMusicCandidate(candidate.id), {
+          font: 'bold 12px Trebuchet MS',
+          border: selected ? '#fef08a' : '#8b5cf6',
+          color: selected ? '#fff7ad' : '#ddd6fe',
+          bg: selected ? '#49346f' : '#211a43'
+        });
+    });
+
+    text(ctx, 'GAME FEEL', rightX, 154, {
+      font: '900 16px Trebuchet MS', color: '#fbbf24'
+    });
+    slider(ctx, game, rightX, 174, colW, 'SCREEN SHAKE', 'screenShake', game.settings.screenShake, '#fb7185');
+    slider(ctx, game, rightX, 232, colW, 'PARTICLE DENSITY', 'particles', game.settings.particles, '#34d399');
+    slider(ctx, game, rightX, 290, colW, 'WORLD EVENT FX', 'eventIntensity', game.settings.eventIntensity, '#fb923c');
+
+    text(ctx, 'ACCESSIBILITY', rightX, 374, {
+      font: '900 16px Trebuchet MS', color: '#86efac'
+    });
+    toggle(ctx, game, rightX, 400, colW, 'DAMAGE NUMBERS', 'damageNumbers', game.settings.damageNumbers, '#67e8f9');
+    toggle(ctx, game, rightX, 442, colW, 'HIGH-CONTRAST HUD', 'highContrast', game.settings.highContrast, '#fef08a');
+    toggle(ctx, game, rightX, 484, colW, 'REDUCE INTENSE AUDIO', 'reducedAudio', game.settings.reducedAudio, '#a7f3d0');
+    toggle(ctx, game, rightX, 526, colW, 'MONO AUDIO', 'monoAudio', game.settings.monoAudio, '#bae6fd');
+    toggle(ctx, game, rightX, 568, colW, 'BOOST DANGER CUES', 'criticalCues', game.settings.criticalCues, '#fda4af');
+
+    button(ctx, cx - 105, h - 84, 210, 44, 'BACK', () => game.closeSettings(), {
+      font: 'bold 14px Trebuchet MS', border: '#94a3b8', bg: '#15192d'
+    });
   }
 
   function abilitySlot(ctx, x, y, w, h, key, name, ratio, color, ready) {
@@ -471,9 +650,9 @@ const UI = (() => {
     const d = game.director;
     if (d.flash > 0) {
       ctx.save();
-      ctx.globalAlpha = Math.min(.22, d.flash);
+      ctx.globalAlpha = Math.min(.22, d.flash) * (game.settings?.eventIntensity ?? 1);
       ctx.fillStyle = d.flashColor;
-      ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+      ctx.fillRect(0, 0, logicalWidth(ctx), logicalHeight(ctx));
       ctx.restore();
     }
     if (d.banner && d.bannerTime > 0) {
@@ -499,23 +678,93 @@ const UI = (() => {
   }
 
   // ===== Level Up =====
+  function drawLevelUpTitle(ctx, game) {
+    const cx = logicalWidth(ctx) / 2;
+    const pulse = (Math.sin(game.time * 4.2) + 1) / 2;
+    const scale = 1 + pulse * 0.025;
+
+    // Wide magical flare behind the headline.
+    ctx.save();
+    const flare = ctx.createLinearGradient(cx - 310, 0, cx + 310, 0);
+    flare.addColorStop(0, 'rgba(103,232,249,0)');
+    flare.addColorStop(.25, 'rgba(103,232,249,.16)');
+    flare.addColorStop(.5, 'rgba(255,255,255,.38)');
+    flare.addColorStop(.75, 'rgba(192,132,252,.16)');
+    flare.addColorStop(1, 'rgba(192,132,252,0)');
+    ctx.fillStyle = flare;
+    ctx.fillRect(cx - 310, 67, 620, 38);
+    ctx.strokeStyle = `rgba(122,240,255,${.35 + pulse * .3})`;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(cx - 250, 87);
+    ctx.lineTo(cx - 104, 87);
+    ctx.moveTo(cx + 104, 87);
+    ctx.lineTo(cx + 250, 87);
+    ctx.stroke();
+
+    // Small arcane diamonds make the title feel authored rather than plain text.
+    for (const side of [-1, 1]) {
+      ctx.save();
+      ctx.translate(cx + side * 274, 87);
+      ctx.rotate(Math.PI / 4);
+      ctx.fillStyle = side < 0 ? '#67e8f9' : '#c084fc';
+      ctx.shadowColor = ctx.fillStyle;
+      ctx.shadowBlur = 12;
+      ctx.fillRect(-5, -5, 10, 10);
+      ctx.restore();
+    }
+    ctx.restore();
+
+    // Heavy display face, deep black keyline, bright inner rim and metallic fill.
+    ctx.save();
+    ctx.translate(cx, 84);
+    ctx.scale(scale, scale);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = '900 58px Impact, Haettenschweiler, "Arial Black", sans-serif';
+    ctx.lineJoin = 'round';
+    ctx.miterLimit = 2;
+    ctx.shadowColor = 'rgba(103,232,249,.75)';
+    ctx.shadowBlur = 22 + pulse * 10;
+    ctx.strokeStyle = '#02040a';
+    ctx.lineWidth = 13;
+    ctx.strokeText('LEVEL UP!', 0, 0);
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = '#7c3aed';
+    ctx.lineWidth = 4;
+    ctx.strokeText('LEVEL UP!', 0, 0);
+    const titleGradient = ctx.createLinearGradient(0, -30, 0, 31);
+    titleGradient.addColorStop(0, '#ffffff');
+    titleGradient.addColorStop(.27, '#d9fbff');
+    titleGradient.addColorStop(.58, '#67e8f9');
+    titleGradient.addColorStop(1, '#8b5cf6');
+    ctx.fillStyle = titleGradient;
+    ctx.fillText('LEVEL UP!', 0, 0);
+    ctx.restore();
+
+    text(ctx, 'CHOOSE YOUR NEXT RELIC', cx, 127, {
+      align: 'center',
+      font: '900 14px "Trebuchet MS", sans-serif',
+      color: '#f8fafc',
+      stroke: '#02040a',
+      lineWidth: 5
+    });
+  }
+
   function drawLevelUp(ctx, game) {
     // Animated background overlay
     const a = 0.6 + Math.sin(game.time * 4) * 0.1;
     ctx.fillStyle = 'rgba(0,0,0,' + a + ')';
-    ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
-    // Title with glow pulse
+    ctx.fillRect(0, 0, logicalWidth(ctx), logicalHeight(ctx));
+    // Premium title treatment with a display font and strong black keyline.
     const t = game.time;
     const glowSize = 12 + Math.sin(t * 4) * 6;
-    text(ctx, 'LEVEL UP!', ctx.canvas.width / 2, 80,
-      { align: 'center', font: 'bold 48px sans-serif', color: '#7af0ff', stroke: '#000' });
-    text(ctx, 'Choose an item', ctx.canvas.width / 2, 130,
-      { align: 'center', font: '16px sans-serif', color: '#fff' });
+    drawLevelUpTitle(ctx, game);
     const items = game.levelUpChoices;
     if (!items || !items.length) return;
     const cw = 200, ch = 280, gap = 24;
     const totalW = cw * items.length + gap * (items.length - 1);
-    const startX = ctx.canvas.width / 2 - totalW / 2;
+    const startX = logicalWidth(ctx) / 2 - totalW / 2;
     const cardY = 170;
     for (let i = 0; i < items.length; i++) {
       const it = items[i];
@@ -569,17 +818,32 @@ const UI = (() => {
       ctx.restore();
       text(ctx, r.name.toUpperCase(), cx + cw / 2, cardY + 16,
         { align: 'center', baseline: 'middle', font: 'bold 14px sans-serif', stroke: '#000' });
-      // Sprite icon (use art if available, fallback to emoji)
+      // High-resolution relic art. The subtle float and rarity bloom make the
+      // item feel alive without moving the actual card hit target.
       const spriteId = 'i_' + it.id;
       if (Sprite.has(spriteId)) {
         const s = Sprite.get(spriteId);
-        const scale = 3;
-        ctx.drawImage(s.image,
-          cx + cw / 2 - s.w * scale / 2, cardY + 60,
-          s.w * scale, s.h * scale);
+        const bob = hover ? Math.sin(game.time * 4.5 + i) * 2 : Math.sin(game.time * 2.2 + i) * 1.25;
+        const artSize = hover ? 96 : 88;
+        const artX = cx + cw / 2;
+        const artY = cardY + 94 + bob;
+        ctx.save();
+        ctx.shadowColor = r.color;
+        ctx.shadowBlur = hover ? 26 : 15;
+        ctx.globalAlpha = 0.96;
+        ctx.drawImage(s.image, artX - artSize / 2, artY - artSize / 2, artSize, artSize);
+        ctx.restore();
       } else {
-        text(ctx, it.icon, cx + cw / 2, cardY + 86,
-          { align: 'center', baseline: 'middle', font: 'bold 56px sans-serif' });
+        // Deliberately avoid platform-dependent emoji if an asset is missing.
+        ctx.save();
+        ctx.translate(cx + cw / 2, cardY + 94);
+        ctx.rotate(Math.PI / 4);
+        ctx.fillStyle = '#172033';
+        ctx.strokeStyle = r.color;
+        ctx.lineWidth = 3;
+        ctx.fillRect(-26, -26, 52, 52);
+        ctx.strokeRect(-26, -26, 52, 52);
+        ctx.restore();
       }
       // Name
       text(ctx, it.name, cx + cw / 2, cardY + 158,
@@ -634,27 +898,27 @@ const UI = (() => {
   // ===== Stage Complete =====
   function drawStageComplete(ctx, game) {
     ctx.fillStyle = 'rgba(0,0,0,0.7)';
-    ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+    ctx.fillRect(0, 0, logicalWidth(ctx), logicalHeight(ctx));
     const stage = STAGES[game.stage.index];
-    text(ctx, 'STAGE COMPLETE!', ctx.canvas.width / 2, 80,
+    text(ctx, 'STAGE COMPLETE!', logicalWidth(ctx) / 2, 80,
       { align: 'center', font: 'bold 42px sans-serif', color: '#ffd84a', stroke: '#000' });
-    text(ctx, stage.name, ctx.canvas.width / 2, 140,
+    text(ctx, stage.name, logicalWidth(ctx) / 2, 140,
       { align: 'center', font: '20px sans-serif', color: stage.bg.accent });
     const p = game.player;
     const _seStr = 'Balance: ' + Utils.formatNum(p.coins);
     ctx.font = '20px sans-serif';
-    drawCoinIcon(ctx, ctx.canvas.width / 2 - ctx.measureText(_seStr).width / 2 - 22, 198, 2);
+    drawCoinIcon(ctx, logicalWidth(ctx) / 2 - ctx.measureText(_seStr).width / 2 - 22, 198, 2);
     text(ctx, _seStr,
-      ctx.canvas.width / 2, 200, { align: 'center', font: '20px sans-serif', color: '#ffd84a' });
+      logicalWidth(ctx) / 2, 200, { align: 'center', font: '20px sans-serif', color: '#ffd84a' });
     const _skStr = 'Kills: ' + p.kills;
     ctx.font = '18px sans-serif';
-    drawSkullIcon(ctx, ctx.canvas.width / 2 - ctx.measureText(_skStr).width / 2 - 20, 229, 2);
+    drawSkullIcon(ctx, logicalWidth(ctx) / 2 - ctx.measureText(_skStr).width / 2 - 20, 229, 2);
     text(ctx, _skStr,
-      ctx.canvas.width / 2, 230, { align: 'center', font: '18px sans-serif', color: '#f87171' });
+      logicalWidth(ctx) / 2, 230, { align: 'center', font: '18px sans-serif', color: '#f87171' });
 
     // Shop button + next stage
     const bw = 220, bh = 56;
-    const cx = ctx.canvas.width / 2;
+    const cx = logicalWidth(ctx) / 2;
     button(ctx, cx - bw - 10, 320, bw, bh, 'SHOP',
       () => game.openShop());
     if (stage.index < STAGES.length) {
@@ -666,63 +930,350 @@ const UI = (() => {
     }
   }
 
-  // ===== Shop =====
+  // ===== Arcane Forge =====
+  function forgePath(ctx, points, close = true) {
+    ctx.beginPath();
+    ctx.moveTo(points[0][0], points[0][1]);
+    for (let i = 1; i < points.length; i++) ctx.lineTo(points[i][0], points[i][1]);
+    if (close) ctx.closePath();
+  }
+
+  function drawForgeIcon(ctx, id, cx, cy, size, color) {
+    const s = size / 64;
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.scale(s, s);
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = color;
+    ctx.fillStyle = color;
+    ctx.lineWidth = 4;
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 11;
+
+    if (id === 'hp') {
+      // Faceted crystal heart.
+      ctx.beginPath();
+      ctx.moveTo(0, 24);
+      ctx.bezierCurveTo(-8, 14, -25, 5, -25, -9);
+      ctx.bezierCurveTo(-25, -24, -7, -28, 0, -15);
+      ctx.bezierCurveTo(7, -28, 25, -24, 25, -9);
+      ctx.bezierCurveTo(25, 5, 8, 14, 0, 24);
+      ctx.fill();
+      ctx.globalCompositeOperation = 'source-atop';
+      ctx.fillStyle = 'rgba(255,255,255,.34)';
+      forgePath(ctx, [[0,-15],[-9,3],[0,24],[7,2]]);
+      ctx.fill();
+    } else if (id === 'dmg') {
+      // Arcane blade and its glowing edge.
+      forgePath(ctx, [[-19,22],[-11,7],[12,-22],[23,-25],[20,-14],[-6,12]]);
+      ctx.fill();
+      ctx.fillStyle = '#f8fafc';
+      forgePath(ctx, [[-10,8],[13,-19],[18,-20],[-5,12]]);
+      ctx.fill();
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 5;
+      ctx.beginPath(); ctx.moveTo(-20,11); ctx.lineTo(-7,24); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(-18,22); ctx.lineTo(-25,29); ctx.stroke();
+    } else if (id === 'speed') {
+      // Three swept wind-feathers.
+      for (let i = 0; i < 3; i++) {
+        const y = -17 + i * 15;
+        ctx.beginPath();
+        ctx.moveTo(-26, y + 8);
+        ctx.quadraticCurveTo(-2, y - 10, 25, y - 4);
+        ctx.quadraticCurveTo(5, y + 3, -8, y + 13);
+        ctx.stroke();
+      }
+    } else if (id === 'atkSpd') {
+      forgePath(ctx, [[5,-29],[-19,3],[-3,3],[-10,29],[22,-8],[5,-8]]);
+      ctx.fill();
+      ctx.fillStyle = '#fff7c2';
+      forgePath(ctx, [[4,-17],[-8,-1],[3,-1],[-1,14],[11,-3],[3,-3]]);
+      ctx.fill();
+    } else if (id === 'magnet') {
+      // Horseshoe magnet with luminous poles.
+      ctx.lineWidth = 11;
+      ctx.beginPath();
+      ctx.arc(0, 1, 21, Math.PI * 0.12, Math.PI * 0.88, true);
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = '#e2e8f0';
+      ctx.fillRect(-27, 4, 11, 17);
+      ctx.fillRect(16, 4, 11, 17);
+      ctx.fillStyle = color;
+      ctx.fillRect(-25, 6, 7, 5);
+      ctx.fillRect(18, 6, 7, 5);
+    } else {
+      // Recovery: alchemical vial with a living rune.
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.moveTo(-10, -25); ctx.lineTo(10, -25);
+      ctx.moveTo(-7, -24); ctx.lineTo(-7, -12);
+      ctx.moveTo(7, -24); ctx.lineTo(7, -12);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(-7, -12);
+      ctx.quadraticCurveTo(-22, 2, -14, 21);
+      ctx.quadraticCurveTo(0, 30, 14, 21);
+      ctx.quadraticCurveTo(22, 2, 7, -12);
+      ctx.closePath();
+      ctx.stroke();
+      ctx.globalAlpha = .68;
+      ctx.beginPath();
+      ctx.arc(0, 9, 14, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = '#ecfeff';
+      ctx.fillRect(-3, 0, 6, 18);
+      ctx.fillRect(-9, 6, 18, 6);
+    }
+    ctx.restore();
+  }
+
+  function forgeTheme(id) {
+    return {
+      hp:     { color: '#fb7185', dark: '#4c1026', label: 'SURVIVAL', unit: 'MAX HP' },
+      dmg:    { color: '#fbbf24', dark: '#422006', label: 'OFFENSE', unit: 'DAMAGE' },
+      speed:  { color: '#34d399', dark: '#063b2a', label: 'MOBILITY', unit: 'MOVE SPEED' },
+      atkSpd: { color: '#60a5fa', dark: '#0b2854', label: 'TEMPO', unit: 'ATTACK SPEED' },
+      magnet: { color: '#c084fc', dark: '#35105b', label: 'UTILITY', unit: 'PICKUP RANGE' },
+      regen:  { color: '#22d3ee', dark: '#083b46', label: 'SUSTAIN', unit: 'HP / SECOND' }
+    }[id];
+  }
+
+  function upgradeValue(u, level) {
+    const total = u.amount * level;
+    if (u.id === 'hp' || u.id === 'dmg') return `+${Math.round(total)}`;
+    if (u.id === 'regen') return `+${total.toFixed(1)}`;
+    return `+${Math.round(total * 100)}%`;
+  }
+
   function drawShop(ctx, game) {
-    ctx.fillStyle = 'rgba(0,0,0,0.85)';
-    ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
-    text(ctx, 'SHOP', ctx.canvas.width / 2, 60,
-      { align: 'center', font: 'bold 36px sans-serif', color: '#7af0ff' });
-    const _shopStr = 'Permanent upgrades  •  ' + Utils.formatNum(game.player.coins) + ' coins';
-    ctx.font = '16px sans-serif';
-    drawCoinIcon(ctx, ctx.canvas.width / 2 - ctx.measureText(_shopStr).width / 2 - 22, 98, 2);
-    text(ctx, _shopStr,
-      ctx.canvas.width / 2, 100, { align: 'center', font: '16px sans-serif', color: '#ffd84a' });
+    const w = logicalWidth(ctx), h = logicalHeight(ctx);
+    const elapsed = Math.max(0, game.time - (game.shopOpenedAt ?? game.time));
+    const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    const reveal = reducedMotion ? 1 : Math.min(1, elapsed / .42);
+    const eased = 1 - Math.pow(1 - reveal, 3);
+    const t = game.time;
+
+    // Deep glass overlay with a warm forge core rather than a flat black veil.
+    const veil = ctx.createRadialGradient(w / 2, h * .44, 40, w / 2, h * .48, w * .65);
+    veil.addColorStop(0, 'rgba(55,26,76,.58)');
+    veil.addColorStop(.52, 'rgba(7,10,27,.91)');
+    veil.addColorStop(1, 'rgba(2,4,12,.98)');
+    ctx.fillStyle = veil;
+    ctx.fillRect(0, 0, w, h);
+
+    // Slow arcane dust gives the modal life without distracting from decisions.
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    for (let i = 0; i < 36; i++) {
+      const px = (i * 197 + t * (8 + i % 4)) % (w + 80) - 40;
+      const py = (i * 83 - t * (13 + i % 3)) % (h + 80);
+      const alpha = .12 + (Math.sin(t * 1.7 + i) + 1) * .08;
+      ctx.fillStyle = i % 4 ? `rgba(103,232,249,${alpha})` : `rgba(251,191,36,${alpha})`;
+      ctx.beginPath(); ctx.arc(px, py, 1 + i % 3 * .45, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.restore();
+
+    const shellX = 108, shellY = 32 + (1 - eased) * 28;
+    const shellW = w - 216, shellH = h - 64;
+    ctx.save();
+    ctx.globalAlpha = eased;
+    ctx.shadowColor = 'rgba(192,132,252,.32)';
+    ctx.shadowBlur = 36;
+    const shell = ctx.createLinearGradient(shellX, shellY, shellX, shellY + shellH);
+    shell.addColorStop(0, 'rgba(30,28,61,.97)');
+    shell.addColorStop(.5, 'rgba(12,16,37,.97)');
+    shell.addColorStop(1, 'rgba(5,8,22,.99)');
+    ctx.fillStyle = shell;
+    ctx.beginPath(); ctx.roundRect(shellX, shellY, shellW, shellH, 28); ctx.fill();
+    ctx.shadowBlur = 0;
+    const shellBorder = ctx.createLinearGradient(shellX, shellY, shellX + shellW, shellY + shellH);
+    shellBorder.addColorStop(0, 'rgba(251,191,36,.72)');
+    shellBorder.addColorStop(.45, 'rgba(103,232,249,.3)');
+    shellBorder.addColorStop(1, 'rgba(192,132,252,.62)');
+    ctx.strokeStyle = shellBorder;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.restore();
+
+    // Header sigil and strong two-line hierarchy.
+    ctx.save();
+    ctx.globalAlpha = eased;
+    ctx.translate(w / 2, 83 + (1 - eased) * 12);
+    ctx.strokeStyle = 'rgba(251,191,36,.34)';
+    ctx.lineWidth = 1.5;
+    ctx.shadowColor = '#fbbf24';
+    ctx.shadowBlur = 14;
+    ctx.beginPath(); ctx.arc(0, 0, 36 + Math.sin(t * 1.8) * 2, 0, Math.PI * 2); ctx.stroke();
+    ctx.rotate(t * .08);
+    for (let i = 0; i < 8; i++) {
+      ctx.rotate(Math.PI / 4);
+      ctx.beginPath(); ctx.moveTo(42, 0); ctx.lineTo(56, 0); ctx.stroke();
+    }
+    ctx.restore();
+    text(ctx, 'ARCANE FORGE', w / 2, 54 + (1 - eased) * 12, {
+      align: 'center', font: '900 38px Trebuchet MS', color: '#fef3c7',
+      stroke: '#12051f', lineWidth: 7
+    });
+    text(ctx, 'BIND POWER TO EVERY FUTURE RUN', w / 2, 102, {
+      align: 'center', font: 'bold 12px Trebuchet MS', color: '#a5f3fc'
+    });
+
+    // Currency becomes an obvious resource capsule, not inline body copy.
+    const balanceText = Utils.formatNum(game.player.coins);
+    const balanceX = w - 275, balanceY = 62, balanceW = 132, balanceH = 48;
+    const balanceGlow = ctx.createLinearGradient(balanceX, balanceY, balanceX + balanceW, balanceY + balanceH);
+    balanceGlow.addColorStop(0, 'rgba(120,53,15,.72)');
+    balanceGlow.addColorStop(1, 'rgba(30,20,12,.92)');
+    ctx.fillStyle = balanceGlow;
+    ctx.beginPath(); ctx.roundRect(balanceX, balanceY, balanceW, balanceH, 24); ctx.fill();
+    ctx.strokeStyle = 'rgba(251,191,36,.75)'; ctx.lineWidth = 1.5; ctx.stroke();
+    drawCoinIcon(ctx, balanceX + 15, balanceY + 12, 2);
+    text(ctx, balanceText, balanceX + 51, balanceY + 8, {
+      font: '900 20px Trebuchet MS', color: '#fef3c7'
+    });
+    text(ctx, 'AVAILABLE', balanceX + 51, balanceY + 30, {
+      font: 'bold 9px Trebuchet MS', color: '#fbbf24'
+    });
 
     const cols = 3;
-    const cw = 220, ch = 130, gap = 18;
+    const cw = 320, ch = 184, gap = 18;
     const totalW = cw * cols + gap * (cols - 1);
-    const startX = ctx.canvas.width / 2 - totalW / 2;
-    const startY = 150;
+    const startX = w / 2 - totalW / 2;
+    const startY = 142;
     for (let i = 0; i < SHOP_UPGRADES.length; i++) {
       const u = SHOP_UPGRADES[i];
+      const theme = forgeTheme(u.id);
       const lvl = game.player.shopLevels[u.id] || 0;
       const maxed = lvl >= u.max;
       const col = i % cols, row = Math.floor(i / cols);
       const x = startX + col * (cw + gap);
-      const y = startY + row * (ch + gap);
+      const baseY = startY + row * (ch + gap);
+      const cardReveal = reducedMotion ? 1 : Math.min(1, Math.max(0, (elapsed - .08 - i * .045) / .36));
+      const cardEase = 1 - Math.pow(1 - cardReveal, 3);
+      const y = baseY + (1 - cardEase) * 24;
       const hover = ctx._hover && pointInRect(ctx._mouse, x, y, cw, ch);
-      // Card with glow on hover
-      ctx.save();
-      if (hover && !maxed) {
-        ctx.shadowColor = '#7af0ff';
-        ctx.shadowBlur = 12;
-      }
-      ctx.fillStyle = maxed ? '#1a2a1a' : (hover ? '#2a2a4a' : '#1a1a2a');
-      ctx.fillRect(x, y, cw, ch);
-      ctx.shadowBlur = 0;
-      ctx.strokeStyle = maxed ? '#22c55e' : '#7af0ff';
-      ctx.lineWidth = 2;
-      ctx.strokeRect(x, y, cw, ch);
-      ctx.restore();
-      text(ctx, u.icon, x + 14, y + 16, { font: '28px sans-serif' });
-      text(ctx, u.name, x + 52, y + 18, { font: 'bold 18px sans-serif' });
-      text(ctx, u.desc, x + 14, y + 56, { font: '12px sans-serif', color: '#cbd5e1' });
-      // Level progress bar
-      const bw = cw - 28, bh = 6;
-      const bx = x + 14, by = y + 78;
-      ctx.fillStyle = '#0a0a1a';
-      ctx.fillRect(bx, by, bw, bh);
-      ctx.fillStyle = '#7af0ff';
-      ctx.fillRect(bx, by, bw * (lvl / u.max), bh);
       const cost = Math.floor(u.cost * (1 + lvl * 0.5));
       const canAfford = game.player.coins >= cost && !maxed;
-      text(ctx, maxed ? 'MAXED' : `${cost} coins`,
-        x + 14, y + ch - 24, {
-          font: 'bold 14px sans-serif',
-          color: maxed ? '#22c55e' : (canAfford ? '#ffd84a' : '#94a3b8')
+      const purchaseAge = game.shopPurchaseFx?.id === u.id
+        ? t - game.shopPurchaseFx.startedAt : Infinity;
+      const purchaseFlash = purchaseAge >= 0 && purchaseAge < .55
+        ? 1 - purchaseAge / .55 : 0;
+
+      ctx.save();
+      ctx.globalAlpha = cardEase;
+      if ((hover && !maxed) || purchaseFlash > 0) {
+        ctx.shadowColor = purchaseFlash > 0 ? '#ffffff' : theme.color;
+        ctx.shadowBlur = 18 + purchaseFlash * 22;
+      }
+      const card = ctx.createLinearGradient(x, y, x + cw, y + ch);
+      card.addColorStop(0, hover ? theme.dark : 'rgba(24,29,55,.98)');
+      card.addColorStop(.58, 'rgba(13,17,37,.99)');
+      card.addColorStop(1, maxed ? 'rgba(8,46,34,.98)' : 'rgba(7,10,25,.99)');
+      ctx.fillStyle = card;
+      ctx.beginPath(); ctx.roundRect(x, y, cw, ch, 18); ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.strokeStyle = maxed ? '#34d399' : (hover ? theme.color : 'rgba(148,163,184,.28)');
+      ctx.lineWidth = hover ? 2.5 : 1.5;
+      ctx.stroke();
+
+      // Top color rail and subtle diagonal material highlight.
+      ctx.save();
+      ctx.beginPath(); ctx.roundRect(x, y, cw, ch, 18); ctx.clip();
+      const rail = ctx.createLinearGradient(x, y, x + cw, y);
+      rail.addColorStop(0, theme.color);
+      rail.addColorStop(.7, 'rgba(255,255,255,.15)');
+      rail.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.fillStyle = rail; ctx.fillRect(x, y, cw, 4);
+      ctx.fillStyle = `rgba(255,255,255,${hover ? .045 : .018})`;
+      forgePath(ctx, [[x+210,y],[x+cw,y],[x+cw,y+94],[x+270,y+52]]);
+      ctx.fill();
+      ctx.restore();
+
+      // Icon medallion.
+      const medX = x + 54, medY = y + 62;
+      const med = ctx.createRadialGradient(medX - 10, medY - 12, 2, medX, medY, 39);
+      med.addColorStop(0, 'rgba(255,255,255,.12)');
+      med.addColorStop(.4, theme.dark);
+      med.addColorStop(1, 'rgba(2,6,23,.95)');
+      ctx.fillStyle = med;
+      ctx.beginPath(); ctx.arc(medX, medY, 38, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = theme.color; ctx.lineWidth = 1.5; ctx.stroke();
+      drawForgeIcon(ctx, u.id, medX, medY, 52, theme.color);
+
+      text(ctx, theme.label, x + 104, y + 26, {
+        font: 'bold 10px Trebuchet MS', color: theme.color
+      });
+      text(ctx, u.name.toUpperCase(), x + 104, y + 43, {
+        font: '900 22px Trebuchet MS', color: '#f8fafc'
+      });
+      text(ctx, u.desc.replace(' (persists)', ''), x + 104, y + 73, {
+        font: '13px Trebuchet MS', color: '#cbd5e1'
+      });
+
+      // Current aggregate value clarifies what previous purchases achieved.
+      text(ctx, lvl ? upgradeValue(u, lvl) : 'BASE', x + 104, y + 102, {
+        font: '900 17px Trebuchet MS', color: lvl ? theme.color : '#64748b'
+      });
+      text(ctx, theme.unit, x + 160, y + 106, {
+        font: 'bold 9px Trebuchet MS', color: '#64748b'
+      });
+
+      // Individual rank pips read more clearly than a thin generic bar.
+      const pipY = y + 129;
+      const pipGap = 4;
+      const pipW = Math.min(21, (cw - 30 - (u.max - 1) * pipGap) / u.max);
+      for (let rank = 0; rank < u.max; rank++) {
+        const active = rank < lvl;
+        ctx.fillStyle = active ? theme.color : 'rgba(71,85,105,.38)';
+        if (active) {
+          ctx.shadowColor = theme.color;
+          ctx.shadowBlur = 7;
+        }
+        ctx.beginPath();
+        ctx.roundRect(x + 15 + rank * (pipW + pipGap), pipY, pipW, 6, 3);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+      }
+
+      // Dedicated action rail makes affordance and price unmistakable.
+      const actionY = y + 145;
+      ctx.fillStyle = maxed
+        ? 'rgba(16,185,129,.12)'
+        : (canAfford ? `${theme.dark}dd` : 'rgba(15,23,42,.72)');
+      ctx.beginPath(); ctx.roundRect(x + 12, actionY, cw - 24, 29, 9); ctx.fill();
+      ctx.strokeStyle = maxed ? 'rgba(52,211,153,.5)'
+        : (canAfford ? theme.color : 'rgba(71,85,105,.45)');
+      ctx.lineWidth = 1; ctx.stroke();
+      text(ctx, maxed ? 'MASTERED' : (canAfford ? 'BIND UPGRADE' : 'INSUFFICIENT COINS'),
+        x + 25, actionY + 8, {
+          font: 'bold 11px Trebuchet MS',
+          color: maxed ? '#6ee7b7' : (canAfford ? '#f8fafc' : '#64748b')
         });
-      text(ctx, `LV ${lvl}/${u.max}`,
-        x + cw - 14, y + ch - 24, { align: 'right', font: '12px sans-serif', color: '#7af0ff' });
+      if (!maxed) {
+        drawCoinIcon(ctx, x + cw - 81, actionY + 5, 1);
+        text(ctx, String(cost), x + cw - 60, actionY + 6, {
+          font: '900 13px Trebuchet MS',
+          color: canAfford ? '#fbbf24' : '#64748b'
+        });
+      } else {
+        text(ctx, `${lvl}/${u.max}`, x + cw - 25, actionY + 8, {
+          align: 'right', font: 'bold 11px Trebuchet MS', color: '#6ee7b7'
+        });
+      }
+
+      if (purchaseFlash > 0) {
+        ctx.globalCompositeOperation = 'screen';
+        ctx.strokeStyle = `rgba(255,255,255,${purchaseFlash})`;
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(medX, medY, 39 + (1 - purchaseFlash) * 36, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      ctx.restore();
       if (!maxed) {
         buttons.push({
           x, y, w: cw, h: ch,
@@ -733,31 +1284,37 @@ const UI = (() => {
 
     // Return to the screen that opened the shop. Opening the shop after a
     // boss must not accidentally resume a completed stage.
-    const bw = 240, bh = 56;
-    const cx = ctx.canvas.width / 2;
-    button(ctx, cx - bw / 2, ctx.canvas.height - 90, bw, bh, 'BACK',
-      () => game.closeShop(), { font: 'bold 20px sans-serif' });
+    const bw = 210, bh = 44;
+    const cx = w / 2;
+    const backLabel = game.shopReturnState === 'menu' ? 'BACK TO MENU' : 'BACK';
+    button(ctx, cx - bw / 2, h - 62, bw, bh, backLabel,
+      () => game.closeShop(), {
+        font: 'bold 14px Trebuchet MS',
+        border: '#94a3b8',
+        color: '#e2e8f0',
+        bg: '#15192d'
+      });
   }
 
   // ===== Game Over =====
   function drawGameOver(ctx, game) {
     ctx.fillStyle = 'rgba(20,0,0,0.8)';
-    ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
-    text(ctx, 'YOU DIED', ctx.canvas.width / 2, 100,
+    ctx.fillRect(0, 0, logicalWidth(ctx), logicalHeight(ctx));
+    text(ctx, 'YOU DIED', logicalWidth(ctx) / 2, 100,
       { align: 'center', font: 'bold 64px sans-serif', color: '#dc2626', stroke: '#000' });
     const p = game.player;
     text(ctx, 'Reached: ' + STAGES[game.stage.index].name,
-      ctx.canvas.width / 2, 200, { align: 'center', font: '20px sans-serif', color: '#fff' });
+      logicalWidth(ctx) / 2, 200, { align: 'center', font: '20px sans-serif', color: '#fff' });
     text(ctx, 'Level ' + p.level + '  •  ' + p.kills + ' kills',
-      ctx.canvas.width / 2, 240, { align: 'center', font: '18px sans-serif', color: '#7af0ff' });
+      logicalWidth(ctx) / 2, 240, { align: 'center', font: '18px sans-serif', color: '#7af0ff' });
     const _goStr = Utils.formatNum(p.coins) + ' coins';
     ctx.font = '20px sans-serif';
-    drawCoinIcon(ctx, ctx.canvas.width / 2 - ctx.measureText(_goStr).width / 2 - 22, 278, 2);
+    drawCoinIcon(ctx, logicalWidth(ctx) / 2 - ctx.measureText(_goStr).width / 2 - 22, 278, 2);
     text(ctx, _goStr,
-      ctx.canvas.width / 2, 280, { align: 'center', font: '20px sans-serif', color: '#ffd84a' });
+      logicalWidth(ctx) / 2, 280, { align: 'center', font: '20px sans-serif', color: '#ffd84a' });
 
     const bw = 220, bh = 54;
-    const cx = ctx.canvas.width / 2;
+    const cx = logicalWidth(ctx) / 2;
     let buttonY = 340;
     if (!game.reviveUsed && SDK.isAvailable()) {
       button(ctx, cx - bw / 2, buttonY, bw, bh,
@@ -773,11 +1330,11 @@ const UI = (() => {
   // ===== Pause =====
   function drawPause(ctx, game) {
     ctx.fillStyle = 'rgba(0,0,0,0.7)';
-    ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
-    text(ctx, 'PAUSED', ctx.canvas.width / 2, 120,
+    ctx.fillRect(0, 0, logicalWidth(ctx), logicalHeight(ctx));
+    text(ctx, 'PAUSED', logicalWidth(ctx) / 2, 120,
       { align: 'center', font: 'bold 48px sans-serif', color: '#7af0ff' });
     const bw = 220, bh = 50;
-    const cx = ctx.canvas.width / 2;
+    const cx = logicalWidth(ctx) / 2;
     button(ctx, cx - bw / 2, 220, bw, bh, 'RESUME', () => game.resume());
     button(ctx, cx - bw / 2, 290, bw, bh, 'MAIN MENU', () => game.toMenu());
     button(ctx, cx - bw / 2, 360, bw, bh, Audio.isMuted() ? 'UNMUTE' : 'MUTE',
@@ -787,25 +1344,25 @@ const UI = (() => {
   // ===== Victory =====
   function drawVictory(ctx, game) {
     ctx.fillStyle = 'rgba(0,0,20,0.85)';
-    ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
-    text(ctx, 'VICTORY!', ctx.canvas.width / 2, 100,
+    ctx.fillRect(0, 0, logicalWidth(ctx), logicalHeight(ctx));
+    text(ctx, 'VICTORY!', logicalWidth(ctx) / 2, 100,
       { align: 'center', font: 'bold 56px sans-serif', color: '#ffd84a', stroke: '#000' });
     const p = game.player;
     text(ctx, 'You conquered all 4 stages!',
-      ctx.canvas.width / 2, 180, { align: 'center', font: '20px sans-serif', color: '#7af0ff' });
+      logicalWidth(ctx) / 2, 180, { align: 'center', font: '20px sans-serif', color: '#7af0ff' });
     text(ctx, 'Final level: ' + p.level,
-      ctx.canvas.width / 2, 230, { align: 'center', font: '20px sans-serif', color: '#fff' });
+      logicalWidth(ctx) / 2, 230, { align: 'center', font: '20px sans-serif', color: '#fff' });
     text(ctx, 'Total kills: ' + p.kills,
-      ctx.canvas.width / 2, 260, { align: 'center', font: '18px sans-serif', color: '#f87171' });
+      logicalWidth(ctx) / 2, 260, { align: 'center', font: '18px sans-serif', color: '#f87171' });
     const _vicStr = Utils.formatNum(p.coins) + ' coins';
     ctx.font = '24px sans-serif';
-    drawCoinIcon(ctx, ctx.canvas.width / 2 - ctx.measureText(_vicStr).width / 2 - 24, 298, 2);
+    drawCoinIcon(ctx, logicalWidth(ctx) / 2 - ctx.measureText(_vicStr).width / 2 - 24, 298, 2);
     text(ctx, _vicStr,
-      ctx.canvas.width / 2, 300, { align: 'center', font: '24px sans-serif', color: '#ffd84a' });
+      logicalWidth(ctx) / 2, 300, { align: 'center', font: '24px sans-serif', color: '#ffd84a' });
 
     const bw = 220, bh = 54;
-    button(ctx, ctx.canvas.width / 2 - bw / 2, 380, bw, bh, 'NEW GAME+', () => game.startNewRun(0, true));
-    button(ctx, ctx.canvas.width / 2 - bw / 2, 450, bw, bh, 'MAIN MENU', () => game.toMenu());
+    button(ctx, logicalWidth(ctx) / 2 - bw / 2, 380, bw, bh, 'NEW GAME+', () => game.startNewRun(0, true));
+    button(ctx, logicalWidth(ctx) / 2 - bw / 2, 450, bw, bh, 'MAIN MENU', () => game.toMenu());
   }
 
   // ===== Click dispatch =====
@@ -813,7 +1370,7 @@ const UI = (() => {
     for (const b of buttons) {
       if (pointInRect({ x: mx, y: my }, b.x, b.y, b.w, b.h)) {
         Audio.select();
-        b.onClick();
+        b.onClick(mx, my);
         return true;
       }
     }
@@ -830,7 +1387,7 @@ const UI = (() => {
   }
 
   return {
-    drawMainMenu, drawHelp, drawHUD, drawLevelUp,
+    drawMainMenu, drawHelp, drawSettings, drawHUD, drawLevelUp,
     drawStageComplete, drawShop, drawGameOver, drawPause, drawVictory, drawDirectorOverlay,
     handleClick, clearButtons, text, button,
     get buttons() { return buttons; }

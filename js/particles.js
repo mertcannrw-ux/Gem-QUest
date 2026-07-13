@@ -31,10 +31,13 @@ class ParticleSystem {
     this.spriteId = new Array(max).fill('');
     this.rotation = new Float32Array(max);
     this.rotSpeed = new Float32Array(max);
+    this.radius = new Float32Array(max);
     this.count = 0;
+    this.density = 1;
   }
 
   spawn(p) {
+    if (p.kind !== 1 && this.density < 1 && Math.random() > this.density) return;
     if (this.count >= this.max) return;
     const i = this.count++;
     this.x[i] = p.x; this.y[i] = p.y;
@@ -49,6 +52,11 @@ class ParticleSystem {
     this.spriteId[i] = p.spriteId || '';
     this.rotation[i] = p.rotation || 0;
     this.rotSpeed[i] = p.rotSpeed || 0;
+    this.radius[i] = p.radius || p._r || 80;
+  }
+
+  setDensity(value) {
+    this.density = Math.max(0, Math.min(1, Number(value) || 0));
   }
 
   spawnBurst(x, y, color, count = 12, speed = 200) {
@@ -128,6 +136,7 @@ class ParticleSystem {
           this.spriteId[i] = this.spriteId[this.count];
           this.rotation[i] = this.rotation[this.count];
           this.rotSpeed[i] = this.rotSpeed[this.count];
+          this.radius[i] = this.radius[this.count];
         }
         i--;
         continue;
@@ -166,7 +175,7 @@ class ParticleSystem {
         ctx.lineTo(sx, sy);
         ctx.stroke();
       } else if (k === 3) {
-        const r = (1 - a) * 80;
+        const r = (1 - a) * this.radius[i];
         ctx.strokeStyle = c;
         ctx.lineWidth = 2 + a * 2;
         ctx.beginPath();

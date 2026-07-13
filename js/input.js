@@ -10,10 +10,23 @@
  */
 
 const Input = (() => {
+  const keyboardKeys = new Set();
+  // Keep this public aggregate for legacy consumers, but never use it as the
+  // source of truth. Keyboard and touch input have independent lifetimes.
   const keys = new Set();
   const justPressed = new Set();
   const mouse = { x: 0, y: 0, down: false, worldX: 0, worldY: 0 };
-  const touches = new Map(); // id -> {x, y, sx, sy}
+  const touchMoveKeys = new Set();
+
+  function refreshKeys() {
+    keys.clear();
+    for (const key of keyboardKeys) keys.add(key);
+    for (const key of touchMoveKeys) keys.add(key);
+  }
+
+  function isDown(key) {
+    return keyboardKeys.has(key) || touchMoveKeys.has(key);
+  }
 
   // Touch state for UI feedback (read by HUD)
   const touchState = { active: false, origin: null };
@@ -26,31 +39,61 @@ const Input = (() => {
 
   window.addEventListener('keydown', (e) => {
     const k = e.key.toLowerCase();
-    if (!keys.has(k)) justPressed.add(k);
-    keys.add(k);
+    if (!keyboardKeys.has(k)) justPressed.add(k);
+    keyboardKeys.add(k);
+    refreshKeys();
     // Prevent browser shortcuts from stealing our keys
     if (MOVE_KEYS.has(k) || k === ' ' || k === 'escape') {
       e.preventDefault();
     }
   });
   window.addEventListener('keyup', (e) => {
-    keys.delete(e.key.toLowerCase());
+    keyboardKeys.delete(e.key.toLowerCase());
+    refreshKeys();
   });
   // Lose focus -> drop all keys (avoids stuck movement)
-  window.addEventListener('blur', () => keys.clear());
+  window.addEventListener('blur', () => {
+    keyboardKeys.clear();
+    touchMoveKeys.clear();
+    refreshKeys();
+  });
+
+  function setTouchMoveKey(key, pressed) {
+    if (pressed) {
+      touchMoveKeys.add(key);
+    } else {
+      touchMoveKeys.delete(key);
+    }
+    refreshKeys();
+  }
+
+  function clearTouchMoveKeys() {
+    touchMoveKeys.clear();
+    refreshKeys();
+  }
 
   // Mouse
+  function toLogicalPoint(canvas, clientX, clientY) {
+    const r = canvas.getBoundingClientRect();
+    const logicalWidth = canvas.logicalWidth || canvas.width;
+    const logicalHeight = canvas.logicalHeight || canvas.height;
+    return {
+      x: (clientX - r.left) * (logicalWidth / r.width),
+      y: (clientY - r.top) * (logicalHeight / r.height)
+    };
+  }
+
   function attachMouse(canvas) {
     canvas.addEventListener('mousemove', (e) => {
-      const r = canvas.getBoundingClientRect();
-      mouse.x = (e.clientX - r.left) * (canvas.width / r.width);
-      mouse.y = (e.clientY - r.top) * (canvas.height / r.height);
+      const point = toLogicalPoint(canvas, e.clientX, e.clientY);
+      mouse.x = point.x;
+      mouse.y = point.y;
     });
     canvas.addEventListener('mousedown', (e) => {
       mouse.down = true;
-      const r = canvas.getBoundingClientRect();
-      mouse.x = (e.clientX - r.left) * (canvas.width / r.width);
-      mouse.y = (e.clientY - r.top) * (canvas.height / r.height);
+      const point = toLogicalPoint(canvas, e.clientX, e.clientY);
+      mouse.x = point.x;
+      mouse.y = point.y;
       e.preventDefault();
     });
     window.addEventListener('mouseup', () => { mouse.down = false; });
@@ -79,12 +122,9 @@ const Input = (() => {
       joyId = t.identifier;
       stickEl.style.transform = 'translate(-50%, -50%)';
       // Record origin (in logical canvas space) for UI feedback
-      const r = canvas.getBoundingClientRect();
+      const point = toLogicalPoint(canvas, t.clientX, t.clientY);
       touchState.active = true;
-      touchState.origin = {
-        x: (t.clientX - r.left) * (canvas.width / r.width),
-        y: (t.clientY - r.top) * (canvas.height / r.height)
-      };
+      touchState.origin = point;
       e.preventDefault();
     });
     joystickEl.addEventListener('touchmove', (e) => {
@@ -104,10 +144,12 @@ const Input = (() => {
         // Express as simulated WASD
         const nx = dx / maxR, ny = dy / maxR;
         const deadzone = 0.2;
-        keys['w'] = ny < -deadzone; keys['z'] = ny < -deadzone;
-        keys['s'] = ny >  deadzone;
-        keys['a'] = nx < -deadzone; keys['q'] = nx < -deadzone;
-        keys['d'] = nx >  deadzone;
+        setTouchMoveKey('w', ny < -deadzone);
+        setTouchMoveKey('z', ny < -deadzone);
+        setTouchMoveKey('s', ny > deadzone);
+        setTouchMoveKey('a', nx < -deadzone);
+        setTouchMoveKey('q', nx < -deadzone);
+        setTouchMoveKey('d', nx > deadzone);
       }
       e.preventDefault();
     }, { passive: false });
@@ -118,8 +160,7 @@ const Input = (() => {
         stickEl.style.left = '50%';
         stickEl.style.top = '50%';
         stickEl.style.transform = 'translate(-50%, -50%)';
-        keys.delete('w'); keys.delete('z'); keys.delete('s');
-        keys.delete('a'); keys.delete('q'); keys.delete('d');
+        clearTouchMoveKeys();
         touchState.active = false;
         touchState.origin = null;
       }
@@ -133,28 +174,31 @@ const Input = (() => {
       const r = canvas.getBoundingClientRect();
       if (t.clientX - r.left > r.width / 2) {
         mouse.down = true;
-        mouse.x = (t.clientX - r.left) * (canvas.width / r.width);
-        mouse.y = (t.clientY - r.top) * (canvas.height / r.height);
+        const point = toLogicalPoint(canvas, t.clientX, t.clientY);
+        mouse.x = point.x;
+        mouse.y = point.y;
       }
     });
     canvas.addEventListener('touchmove', (e) => {
       const t = e.changedTouches[0];
       const r = canvas.getBoundingClientRect();
       if (t.clientX - r.left > r.width / 2) {
-        mouse.x = (t.clientX - r.left) * (canvas.width / r.width);
-        mouse.y = (t.clientY - r.top) * (canvas.height / r.height);
+        const point = toLogicalPoint(canvas, t.clientX, t.clientY);
+        mouse.x = point.x;
+        mouse.y = point.y;
       }
     });
     canvas.addEventListener('touchend', () => { mouse.down = false; });
+    canvas.addEventListener('touchcancel', () => { mouse.down = false; });
   }
 
   // Movement axis. Normalized to length 1 for diagonals.
   function getMoveAxis() {
     let x = 0, y = 0;
-    if (keys.has('a') || keys.has('q')) x -= 1;
-    if (keys.has('d')) x += 1;
-    if (keys.has('w') || keys.has('z')) y -= 1;
-    if (keys.has('s')) y += 1;
+    if (isDown('a') || isDown('q')) x -= 1;
+    if (isDown('d')) x += 1;
+    if (isDown('w') || isDown('z')) y -= 1;
+    if (isDown('s')) y += 1;
     const len = Math.hypot(x, y);
     if (len > 0) { x /= len; y /= len; }
     return { x, y };
@@ -172,7 +216,8 @@ const Input = (() => {
   return {
     keys, justPressed, mouse, touchState,
     attachMouse, attachTouch,
-    getMoveAxis, updateMouseWorld, endFrame,
+    getMoveAxis, updateMouseWorld, endFrame, toLogicalPoint,
+    setTouchMoveKey, clearTouchMoveKeys,
     get _touchActive() { return touchState.active; },
     get _touchOrigin() { return touchState.origin; }
   };

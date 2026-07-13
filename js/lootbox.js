@@ -34,7 +34,7 @@ class Lootbox {
         const color = RARITY[it.rarity.toUpperCase()].color;
         game.particles.spawnBurst(this.x, this.y, color, 30, 250);
         game.particles.spawnRing(this.x, this.y, color, 80);
-        Audio.levelUp();
+    Audio.play?.('reward.reveal', { rarity: it.rarity, x: game.player.x, y: game.player.y });
         game.particles.spawnFloat(this.x, this.y - 30, it.name, color);
       }
     }
@@ -43,12 +43,20 @@ class Lootbox {
   open(game) {
     this.opened = true;
     this.choices = pickItemRewards(game.player.items, this.rarity.count);
-    Audio.lootboxOpen();
+    if (!this.choices.length) {
+      const fallbackCoins = this.rarityId === 'gold' ? 150 : this.rarityId === 'silver' ? 75 : 40;
+      game.player.addCoins(fallbackCoins);
+      game.particles.spawnFloat(this.x, this.y - 30, '+' + fallbackCoins + ' coins', '#ffd84a');
+      this.alive = false;
+      return;
+    }
+    Audio.lootboxOpen({ x: game.player.x, y: game.player.y });
     game.shake.trigger(4);
   }
 
   pick(index) {
     if (!this.opened) return;
+    if (this._picked >= 0) return;
     if (index < 0 || index >= this.choices.length) return;
     this._picked = index;
   }
@@ -92,9 +100,9 @@ class Lootbox {
     this.renderClosed(ctx, sx, sy);
     ctx.globalAlpha = 1;
 
-    // Show 3 cards rising
-    const w = 60, h = 80;
-    const gap = 12;
+    // Show three full item cards rising from the chest.
+    const w = 96, h = 132;
+    const gap = 14;
     const total = w * 3 + gap * 2;
     const startX = cam.vw / 2 - total / 2;
     const targetY = cam.vh / 2 - h / 2;
@@ -103,32 +111,69 @@ class Lootbox {
       const it = this.choices[i];
       const r = RARITY[it.rarity.toUpperCase()];
       const cx = startX + i * (w + gap) + w / 2;
-      // Card bg
-      ctx.fillStyle = '#1a1a2a';
-      ctx.fillRect(cx - w / 2, cardY, w, h);
+      const pulse = 10 + Math.sin(performance.now() * 0.003 + i * 1.7) * 3;
+      // Card body and rarity bloom
+      ctx.save();
+      ctx.shadowColor = r.color;
+      ctx.shadowBlur = pulse;
+      const bg = ctx.createLinearGradient(cx - w / 2, cardY, cx + w / 2, cardY + h);
+      bg.addColorStop(0, '#1a2540');
+      bg.addColorStop(0.55, '#0d1425');
+      bg.addColorStop(1, '#070b16');
+      ctx.fillStyle = bg;
+      ctx.beginPath();
+      ctx.roundRect(cx - w / 2, cardY, w, h, 12);
+      ctx.fill();
       ctx.strokeStyle = r.color;
       ctx.lineWidth = 2;
-      ctx.strokeRect(cx - w / 2, cardY, w, h);
-      // Icon
+      ctx.stroke();
+      ctx.restore();
+
+      // Rarity cap
+      ctx.save();
+      ctx.beginPath();
+      ctx.roundRect(cx - w / 2, cardY, w, 8, [12, 12, 0, 0]);
       ctx.fillStyle = r.color;
-      ctx.font = 'bold 28px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText(it.icon, cx, cardY + 36);
+      ctx.fill();
+      ctx.restore();
+
+      // Crisp procedural item art; never fall back to an operating-system emoji.
+      const spriteId = 'i_' + it.id;
+      if (Sprite.has(spriteId)) {
+        const s = Sprite.get(spriteId);
+        const size = 62 + Math.sin(performance.now() * 0.0025 + i) * 2;
+        ctx.save();
+        ctx.shadowColor = r.color;
+        ctx.shadowBlur = 15;
+        ctx.drawImage(s.image, cx - size / 2, cardY + 13, size, size);
+        ctx.restore();
+      } else {
+        ctx.save();
+        ctx.translate(cx, cardY + 45);
+        ctx.rotate(Math.PI / 4);
+        ctx.fillStyle = '#172033';
+        ctx.strokeStyle = r.color;
+        ctx.lineWidth = 2;
+        ctx.fillRect(-19, -19, 38, 38);
+        ctx.strokeRect(-19, -19, 38, 38);
+        ctx.restore();
+      }
       // Name
       ctx.fillStyle = '#fff';
-      ctx.font = '11px sans-serif';
-      ctx.fillText(it.name, cx, cardY + 56);
+      ctx.font = 'bold 11px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(it.name, cx, cardY + 94);
       // Rarity
       ctx.fillStyle = r.color;
-      ctx.font = '9px sans-serif';
-      ctx.fillText(r.name, cx, cardY + 70);
+      ctx.font = 'bold 9px sans-serif';
+      ctx.fillText(r.name.toUpperCase(), cx, cardY + 116);
     }
     // Hint
     if (a > 0.9) {
       ctx.fillStyle = '#7af0ff';
       ctx.font = 'bold 14px sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText('Click a card to choose', cam.vw / 2, targetY + h + 24);
+      ctx.fillText('Click a relic to claim it', cam.vw / 2, targetY + h + 28);
     }
   }
 }

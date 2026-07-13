@@ -13,30 +13,68 @@ function compactAlive(arr, keep) {
   arr.length = w;
 }
 
+function environmentHash(x, y, salt = 0) {
+  let h = Math.imul(x | 0, 374761393) + Math.imul(y | 0, 668265263) + Math.imul(salt | 0, 69069);
+  h = (h ^ (h >>> 13)) >>> 0;
+  h = Math.imul(h, 1274126177) >>> 0;
+  return (h ^ (h >>> 16)) >>> 0;
+}
+
+function environmentRandom(x, y, salt = 0) {
+  return environmentHash(x, y, salt) / 4294967295;
+}
+
+function computeCanvasMetrics(logicalWidth, logicalHeight, viewportWidth, viewportHeight, dpr = 1) {
+  const targetAspect = logicalWidth / logicalHeight;
+  const viewportAspect = viewportWidth / viewportHeight;
+  let cssWidth;
+  let cssHeight;
+
+  if (viewportAspect > targetAspect) {
+    cssHeight = viewportHeight;
+    cssWidth = cssHeight * targetAspect;
+  } else {
+    cssWidth = viewportWidth;
+    cssHeight = cssWidth / targetAspect;
+  }
+
+  // Match the backing store to the number of physical pixels the canvas
+  // occupies on screen. Keep at least the design resolution so smaller
+  // windows downsample a detailed frame instead of rendering a tiny one.
+  const displayScale = cssWidth / logicalWidth;
+  const renderScale = Math.min(3, Math.max(1, displayScale * Math.max(1, dpr || 1)));
+
+  return {
+    cssWidth,
+    cssHeight,
+    renderScale,
+    backingWidth: Math.round(logicalWidth * renderScale),
+    backingHeight: Math.round(logicalHeight * renderScale)
+  };
+}
+
 class Game {
   constructor(canvas) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d', { alpha: false });
-    this.ctx.imageSmoothingEnabled = false;
 
-    // Logical resolution - the canvas backing store is rendered at
-    // this size * DPR, then the CSS scales it to fit the viewport. We
-    // pick a single design resolution (1280x720) and letterbox.
+    // Fixed logical coordinates keep gameplay deterministic while resize()
+    // adapts the backing store to the actual physical display resolution.
     this.vw = 1280;
     this.vh = 720;
-    this.dpr = Math.min(window.devicePixelRatio || 1, 2);
-    this.canvas.width = this.vw * this.dpr;
-    this.canvas.height = this.vh * this.dpr;
-    this.ctx.scale(this.dpr, this.dpr);
-    this.ctx.imageSmoothingEnabled = false;
+    this.canvas.logicalWidth = this.vw;
+    this.canvas.logicalHeight = this.vh;
+    this.dpr = window.devicePixelRatio || 1;
+    this.renderScale = 1;
     this.shake = Utils.makeShake();
     this.cam = { x: 0, y: 0, vw: this.vw, vh: this.vh };
 
     // Game state
-    this.state = 'menu'; // menu | help | playing | levelup | stagecomplete | shop | gameover | victory | paused
+    this.state = 'menu'; // menu | help | settings | playing | levelup | stagecomplete | shop | gameover | victory | paused
     this.previousState = 'menu';
     this.shopReturnState = 'stagecomplete';
     this.time = 0;
+    this.settings = this.loadSettings();
 
     // Persistent meta
     this.run = {
@@ -53,7 +91,19 @@ class Game {
     this.enemyProjectiles = [];
     this.lootboxes = [];
     this.particles = new ParticleSystem(1500);
+    // Environment objects are real world entities, not a camera-local visual
+    // scatter.  They retain damage/state for the current stage and are indexed
+    // so actors and projectiles can query only nearby trees.
+    this.environmentObjects = new Map();
+    this.environmentCells = new Set();
+    this.environmentSpatialHash = new Map();
+    this.environmentState = new Map();
+    this.environmentRenderBuffer = [];
+    this.environmentPruneTimer = 2;
+    this.environmentStageId = null;
+    this.environmentCellSize = 128;
     this.director = new RunDirector(this);
+    this.applySettings();
 
     this.levelUpChoices = null;
     this.pendingLevelUps = 0;
@@ -63,6 +113,7 @@ class Game {
     // Resize
     this.resize();
     window.addEventListener('resize', () => this.resize());
+    window.visualViewport?.addEventListener('resize', () => this.resize());
 
     // Click handling
     this.canvas.addEventListener('click', (e) => this.onClick(e));
@@ -88,21 +139,123 @@ class Game {
 
   // Resize the canvas to letterbox-fit the viewport
   resize() {
-    const targetAspect = this.vw / this.vh;
-    const w = window.innerWidth;
-    const h = window.innerHeight;
-    const a = w / h;
-    let cw, ch;
-    if (a > targetAspect) {
-      ch = h; cw = h * targetAspect;
-    } else {
-      cw = w; ch = w / targetAspect;
+    const metrics = computeCanvasMetrics(
+      this.vw,
+      this.vh,
+      window.innerWidth,
+      window.innerHeight,
+      window.devicePixelRatio || 1
+    );
+
+    this.canvas.style.width = `${metrics.cssWidth}px`;
+    this.canvas.style.height = `${metrics.cssHeight}px`;
+
+    if (this.canvas.width !== metrics.backingWidth || this.canvas.height !== metrics.backingHeight) {
+      this.canvas.width = metrics.backingWidth;
+      this.canvas.height = metrics.backingHeight;
+
+      // Resizing resets the entire 2D state, so restore the logical-space
+      // transform and the high-quality resampling settings together.
+      const scaleX = this.canvas.width / this.vw;
+      const scaleY = this.canvas.height / this.vh;
+      this.ctx.setTransform(scaleX, 0, 0, scaleY, 0, 0);
+      this.ctx.imageSmoothingEnabled = true;
+      this.ctx.imageSmoothingQuality = 'high';
+
+      // Rebuild context-owned gradients on the next frame.
+      this._bgGradient = null;
+      this._vignetteGradient = null;
     }
-    this.canvas.style.width = cw + 'px';
-    this.canvas.style.height = ch + 'px';
+
+    this.dpr = window.devicePixelRatio || 1;
+    this.renderScale = metrics.renderScale;
+    this._viewportWidth = window.innerWidth;
+    this._viewportHeight = window.innerHeight;
+    this._viewportDpr = this.dpr;
   }
 
   // ===== State management =====
+  loadSettings() {
+    const defaults = {
+      master: 0.72,
+        music: 0.78,
+        lastMusic: 0.78,
+        sfx: 0.85,
+        ambience: 0.45,
+        reducedAudio: false,
+        monoAudio: false,
+        criticalCues: false,
+        screenShake: 0.75,
+      particles: 1,
+      eventIntensity: 1,
+      damageNumbers: true,
+      highContrast: false
+    };
+    try {
+      const saved = JSON.parse(localStorage.getItem('gemquest_settings') || '{}');
+      return {
+        ...defaults,
+        ...saved,
+        master: Utils.clamp(Number(saved.master ?? defaults.master), 0, 1),
+        music: Utils.clamp(Number(saved.music ?? defaults.music), 0, 1),
+          lastMusic: Utils.clamp(Number(saved.lastMusic ?? saved.music ?? defaults.lastMusic), 0, 1),
+          sfx: Utils.clamp(Number(saved.sfx ?? defaults.sfx), 0, 1),
+          ambience: Utils.clamp(Number(saved.ambience ?? defaults.ambience), 0, 1),
+        screenShake: Utils.clamp(Number(saved.screenShake ?? defaults.screenShake), 0, 1),
+        particles: Utils.clamp(Number(saved.particles ?? defaults.particles), 0, 1),
+        eventIntensity: Utils.clamp(Number(saved.eventIntensity ?? defaults.eventIntensity), 0, 1)
+      };
+    } catch (_) {
+      return defaults;
+    }
+  }
+
+  saveSettings() {
+    try { localStorage.setItem('gemquest_settings', JSON.stringify(this.settings)); } catch (_) {}
+  }
+
+  applySettings() {
+    Audio.setVolume?.(this.settings.master);
+      Audio.setMusicVolume?.(this.settings.music);
+      Audio.setSfxVolume?.(this.settings.sfx);
+      Audio.setAmbienceVolume?.(this.settings.ambience);
+      Audio.setReducedIntensity?.(this.settings.reducedAudio);
+      Audio.setMono?.(this.settings.monoAudio);
+      Audio.setCriticalCueBoost?.(this.settings.criticalCues);
+      this.particles?.setDensity?.(this.settings.particles);
+  }
+
+  setSetting(id, value) {
+    if (!(id in this.settings)) return;
+    const nextValue = typeof this.settings[id] === 'boolean'
+      ? Boolean(value)
+      : Utils.clamp(Number(value) || 0, 0, 1);
+    this.settings[id] = nextValue;
+    if (id === 'music' && nextValue > 0.01) this.settings.lastMusic = nextValue;
+    this.applySettings();
+    this.saveSettings();
+  }
+
+  toggleMusic() {
+    if (Audio.isMuted?.()) Audio.setMuted?.(false);
+    const musicOn = this.settings.music > 0.01;
+    if (musicOn) this.settings.lastMusic = this.settings.music;
+    this.settings.music = musicOn ? 0 : Math.max(0.08, this.settings.lastMusic || 0.78);
+    this.applySettings();
+    this.saveSettings();
+  }
+
+  openSettings() {
+    this.previousState = this.state;
+    this.state = 'settings';
+    SDK.gameplayStop();
+  }
+
+  closeSettings() {
+    this.state = this.previousState || 'menu';
+    if (this.state === 'playing') SDK.gameplayStart();
+  }
+
   toMenu() {
     SDK.gameplayStop();
     this.syncMetaFromPlayer();
@@ -117,6 +270,19 @@ class Game {
   }
   openShop() {
     this.shopReturnState = this.state;
+    this.shopOpenedAt = this.time;
+    this.shopPurchaseFx = null;
+
+    // The forge is also accessible before a run starts. Build a lightweight
+    // player profile from persistent meta so the existing shop code can use
+    // the same balance and upgrade data without spawning a stage.
+    if (!this.player) {
+      this.player = new Player(0, 0);
+      this.player.totalCoins = this.run.totalCoins;
+      this.player.coins = this.run.totalCoins;
+      this.player.shopLevels = { ...this.run.shopLevels };
+    }
+
     this.state = 'shop';
     SDK.gameplayStop();
   }
@@ -134,10 +300,12 @@ class Game {
     this.player.coins = this.run.totalCoins;
     this.reviveUsed = false;
     this.adPending = false;
+    this.fatalError = null;
     this.enemies.length = 0;
     this.projectiles.length = 0;
     this.enemyProjectiles.length = 0;
     this.lootboxes.length = 0;
+    this.resetEnvironment();
     ITEMS_RUNTIME.clear();
     this.particles.clear();
     this.director.reset();
@@ -162,6 +330,7 @@ class Game {
     this.syncMetaFromPlayer();
     this.persistMeta();
     this.stage.startStage(next);
+    this.resetEnvironment();
     this.state = 'playing';
     SDK.gameplayStart();
   }
@@ -187,15 +356,16 @@ class Game {
     this.player.coins -= cost;
     this.player.totalCoins = Math.max(0, this.player.totalCoins - cost);
     this.player.shopLevels[u.id] = lvl + 1;
+    this.shopPurchaseFx = { id: u.id, startedAt: this.time };
     this.run.shopLevels = { ...this.player.shopLevels };
     this.syncMetaFromPlayer();
     this.persistMeta();
-    Audio.coinLot();
+    Audio.play?.('reward.reveal', { rarity: 'rare', x: this.player.x, y: this.player.y });
   }
 
   onPlayerLevelUp(levelsGained = 1) {
     const count = Math.max(1, Math.floor(Number(levelsGained) || 1));
-    Audio.levelUp();
+    Audio.play?.('reward.reveal', { rarity: 'epic', x: this.player.x, y: this.player.y });
     for (let i = 0; i < count; i++) this.player.onLeveledUp();
     this.pendingLevelUps += count;
     this.presentLevelUpChoice();
@@ -249,7 +419,7 @@ class Game {
       for (const lb of this.lootboxes) {
         if (lb.opened && lb.choices) {
           // Compute card hit area
-          const w = 60, h = 80, gap = 12;
+          const w = 96, h = 132, gap = 14;
           const total = w * lb.choices.length + gap * (lb.choices.length - 1);
           const startX = this.vw / 2 - total / 2;
           const targetY = this.vh / 2 - h / 2;
@@ -258,20 +428,6 @@ class Game {
             const r = { x: cx - w / 2, y: targetY, w, h };
             if (mx >= r.x && mx <= r.x + r.w && my >= r.y && my <= r.y + r.h) {
               lb.pick(i);
-              // After pick, check if all lootboxes gone -> stage complete
-              setTimeout(() => {
-                if (this.lootboxes.every(b => !b.alive)) {
-                  this.state = 'stagecomplete';
-                  SDK.gameplayStop();
-                  this.run.totalCoins = this.player.totalCoins;
-                  this.run.maxStageReached = Math.max(
-                    this.run.maxStageReached,
-                    Math.min(this.stage.index + 1, STAGES.length - 1)
-                  );
-                  this.syncMetaFromPlayer();
-                  this.persistMeta();
-                }
-              }, 100);
               return;
             }
           }
@@ -289,7 +445,7 @@ class Game {
           if (mx >= cx && mx <= cx + cw && my >= cardY && my <= cardY + ch) {
             const it = this.levelUpChoices[i];
             this.player.addItem(it.id);
-            Audio.levelUp();
+            Audio.play?.('reward.reveal', { rarity: it.rarity, x: this.player.x, y: this.player.y });
             this.particles.spawnBurst(this.vw / 2, cardY + ch / 2, RARITY[it.rarity.toUpperCase()].color, 30, 250);
             this.levelUpChoices = null;
             this.pendingLevelUps = Math.max(0, this.pendingLevelUps - 1);
@@ -299,7 +455,7 @@ class Game {
         }
       }
     }
-    if (this.state === 'menu' || this.state === 'help' ||
+    if (this.state === 'menu' || this.state === 'help' || this.state === 'settings' ||
         this.state === 'shop' || this.state === 'gameover' ||
         this.state === 'stagecomplete' || this.state === 'victory' ||
         this.state === 'paused') {
@@ -343,19 +499,51 @@ class Game {
     this.run.shopLevels = this.sanitizeShopLevels(this.player.shopLevels);
   }
 
+  completeStageIfReady() {
+    if (this.state !== 'playing' || !this.stage?.bossKilled || this.lootboxes.length > 0) return false;
+    this.transitionToStageComplete();
+    return true;
+  }
+
+  transitionToStageComplete() {
+    if (this.state === 'stagecomplete') return;
+    this.state = 'stagecomplete';
+    SDK.gameplayStop();
+    // Freeze combat immediately. Existing hostile shots should not damage the
+    // player while the completion UI is on screen.
+    this.enemyProjectiles.length = 0;
+    this.run.maxStageReached = Math.max(
+      this.run.maxStageReached,
+      Math.min(this.stage.index + 1, STAGES.length - 1)
+    );
+    this.syncMetaFromPlayer();
+    void this.persistMeta();
+  }
+
+  transitionToGameOver() {
+    if (this.state === 'gameover') return;
+    this.state = 'gameover';
+    SDK.gameLose();
+    this.syncMetaFromPlayer();
+    void this.persistMeta();
+  }
+
   async reviveFromAd() {
     if (this.state !== 'gameover' || this.reviveUsed || this.adPending || !this.player) return;
-    this.adPending = true;
     const wasMuted = Audio.isMuted();
-    const result = await SDK.showAdRewarded({
-      onStarted: () => {
-        SDK.gameplayStop();
-        Audio.setMuted(true);
-      },
-      onFinished: () => Audio.setMuted(wasMuted),
-      onError: () => Audio.setMuted(wasMuted)
-    });
-    this.adPending = false;
+    this.adPending = true;
+    let result;
+    try {
+      result = await SDK.showAdRewarded({
+        onStarted: () => {
+          SDK.gameplayStop();
+          Audio.setMuted(true);
+        }
+      });
+    } finally {
+      this.adPending = false;
+      Audio.setMuted(wasMuted);
+    }
     if (!result.completed || this.state !== 'gameover') return;
     if (this.player.revive(0.5)) {
       this.reviveUsed = true;
@@ -365,6 +553,7 @@ class Game {
       );
       this.particles.spawnRing(this.player.x, this.player.y, '#7af0ff', 90);
       this.particles.spawnBurst(this.player.x, this.player.y, '#7af0ff', 35, 240);
+      Audio.play?.('reward.reveal', { rarity: 'legendary', x: this.player.x, y: this.player.y });
       this.state = 'playing';
       SDK.gameplayStart();
     }
@@ -372,6 +561,7 @@ class Game {
 
   // ===== Main loop =====
   loop(now) {
+    if (this.fatalError) return;
     if (!this.lastTime) this.lastTime = now;
     let dt = (now - this.lastTime) / 1000;
     this.lastTime = now;
@@ -382,20 +572,57 @@ class Game {
       this.update(dt);
       this.render();
     } catch (e) {
-      // Never let a bug freeze the game. Log and keep ticking.
-      console.error('Game loop error:', e);
+      this.handleFatalError(e);
+      Input.endFrame();
+      return;
     }
 
     Input.endFrame();
     requestAnimationFrame((t) => this.loop(t));
   }
 
+  handleFatalError(error) {
+    if (this.fatalError) return;
+    this.fatalError = error instanceof Error ? error : new Error(String(error));
+    SDK.gameplayStop();
+    console.error('Fatal game loop error:', this.fatalError);
+    try { this.renderFatalError(); } catch (_) {}
+    if (typeof window?.dispatchEvent === 'function' && typeof CustomEvent === 'function') {
+      window.dispatchEvent(new CustomEvent('gemquest:fatal', {
+        detail: { message: 'An unexpected runtime error stopped the current run safely.' }
+      }));
+    }
+  }
+
+  renderFatalError() {
+    const ctx = this.ctx;
+    if (!ctx) return;
+    ctx.save();
+    ctx.fillStyle = '#100b18';
+    ctx.fillRect(0, 0, this.vw, this.vh);
+    ctx.fillStyle = '#ff879b';
+    ctx.font = '700 34px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('Something went wrong', this.vw / 2, this.vh / 2 - 18);
+    ctx.fillStyle = '#f5eaff';
+    ctx.font = '18px system-ui, sans-serif';
+    ctx.fillText('Please reload the game to continue.', this.vw / 2, this.vh / 2 + 24);
+    ctx.restore();
+  }
+
   update(dt) {
     this.time += dt;
     this.shake.update(dt);
+    const shakeStrength = this.settings?.screenShake ?? 1;
+    this.shake.x *= shakeStrength;
+    this.shake.y *= shakeStrength;
+    Audio.sync?.(this);
 
     if (this.state === 'playing') {
       // Spawn the player at world origin if not present
+      const stageDef = STAGES[this.stage.index];
+      this.ensureEnvironmentAround(stageDef, this.player.x, this.player.y, 2);
+      this.updateEnvironment(dt);
       this.player.update(dt, this);
       // Keep camera on player with smooth follow
       const tx = this.player.x - this.vw / 2;
@@ -403,6 +630,7 @@ class Game {
       this.cam.x = Utils.lerp(this.cam.x, tx, 0.1);
       this.cam.y = Utils.lerp(this.cam.y, ty, 0.1);
       Input.updateMouseWorld(this.cam);
+      this.ensureEnvironmentAround(stageDef, this.player.x, this.player.y, 2);
 
       // Stage
       this.stage.update(dt, this);
@@ -418,26 +646,27 @@ class Game {
       // Lootboxes
       for (const lb of this.lootboxes) lb.update(dt, this);
       compactAlive(this.lootboxes, lb => lb.alive);
-      // Pickups
-      ITEMS_RUNTIME.updatePickups(dt, this);
-      // Combos, active world events, bounties and synergies
-      this.director.update(dt);
-      // Particles
-      this.particles.update(dt);
+      if (this.completeStageIfReady()) {
+        // Stage completion is atomic: only non-combat visuals can advance
+        // during the frame that performs the transition.
+        this.particles.update(dt);
+      } else {
+        // Pickups
+        ITEMS_RUNTIME.updatePickups(dt, this);
+        // Combos, active world events, bounties and synergies
+        this.director.update(dt);
+        // Particles
+        this.particles.update(dt);
 
-      // Check death
-      if (!this.player.alive) {
-        this.state = 'gameover';
-        SDK.gameLose();
-        this.syncMetaFromPlayer();
-        this.persistMeta();
+        // Check death only while still in the active gameplay state.
+        if (this.state === 'playing' && !this.player.alive) {
+          this.transitionToGameOver();
+        }
       }
     } else if (this.state === 'stagecomplete') {
-      // Pause world
-      for (const e of this.enemies) e.update(dt, this);
-      compactAlive(this.enemies, e => e.alive);
-      for (const p of this.projectiles) p.update(dt, this);
-      compactAlive(this.projectiles, p => !p.dead);
+      // Keep the arena visible, but fully pause combat until the player
+      // advances. Updating enemies here could apply contact damage while the
+      // player is unable to respond.
       this.particles.update(dt);
       // Camera still tracks player for context
       const tx = this.player.x - this.vw / 2;
@@ -447,7 +676,7 @@ class Game {
     } else if (this.state === 'levelup') {
       // Pause world but render it
       this.particles.update(dt);
-    } else if (this.state === 'menu' || this.state === 'help') {
+    } else if (this.state === 'menu' || this.state === 'help' || this.state === 'settings') {
       // Animate menu background subtly
       this.cam.x += dt * 20;
     } else if (this.state === 'shop' || this.state === 'gameover' ||
@@ -458,11 +687,22 @@ class Game {
 
   // ===== Rendering =====
   render() {
+    // Some embedded browsers and zoom changes do not reliably emit a normal
+    // resize event. This inexpensive guard keeps the buffer sharp regardless.
+    const liveDpr = window.devicePixelRatio || 1;
+    if (window.innerWidth !== this._viewportWidth ||
+        window.innerHeight !== this._viewportHeight ||
+        liveDpr !== this._viewportDpr) {
+      this.resize();
+    }
+
     const ctx = this.ctx;
     UI.clearButtons();
+    const menuForge = this.state === 'shop' &&
+      (this.shopReturnState === 'menu' || !this.stage);
 
     // World
-    if (this.state !== 'menu' && this.state !== 'help') {
+    if (this.state !== 'menu' && this.state !== 'help' && this.state !== 'settings' && !menuForge) {
       this.renderWorld();
     } else {
       this.renderMenuBackground();
@@ -473,6 +713,7 @@ class Game {
     this.ctx._mouse = this.mouseLogical;
     if (this.state === 'menu') UI.drawMainMenu(ctx, this);
     else if (this.state === 'help') UI.drawHelp(ctx, this);
+    else if (this.state === 'settings') UI.drawSettings(ctx, this);
     else if (this.state === 'playing') UI.drawHUD(ctx, this);
     else if (this.state === 'levelup') {
       UI.drawHUD(ctx, this);
@@ -483,7 +724,10 @@ class Game {
       UI.drawStageComplete(ctx, this);
     }
     else if (this.state === 'shop') {
-      UI.drawHUD(ctx, this);
+      // A shop opened after a stage keeps the run visible behind it. The
+      // main-menu Forge has no StageManager yet, so drawing the stage HUD
+      // would dereference a missing stage and abort the frame.
+      if (!menuForge) UI.drawHUD(ctx, this);
       UI.drawShop(ctx, this);
     }
     else if (this.state === 'gameover') UI.drawGameOver(ctx, this);
@@ -493,7 +737,9 @@ class Game {
       UI.drawPause(ctx, this);
     }
 
-    if (this.state !== 'menu' && this.state !== 'help') UI.drawDirectorOverlay(ctx, this);
+    if (this.state !== 'menu' && this.state !== 'help' && this.state !== 'settings' && !menuForge) {
+      UI.drawDirectorOverlay(ctx, this);
+    }
 
     // Open lootbox overlay (rendered on top of world)
     if (this.state === 'playing' && this.lootboxes.some(lb => lb.opened)) {
@@ -533,13 +779,18 @@ class Game {
 
     // ===== Tiled ground =====
     this.renderTiles(ctx, stage);
+    this.renderTerrainDetails(ctx, stage);
+
+    // Event atmosphere sits behind combatants so the arena itself appears
+    // transformed without obscuring moment-to-moment readability.
+    this.director.renderBackdrop(ctx, this.cam);
 
     // ===== Apply camera shake for world =====
     ctx.save();
     ctx.translate(this.shake.x, this.shake.y);
 
-    // ===== Environmental props (decorative) =====
-    this.renderProps(ctx, stage);
+    // ===== Low environment and trunks =====
+    this.renderProps(ctx, stage, 'ground');
 
     // Pickups
     ITEMS_RUNTIME.renderPickups(ctx, this.cam);
@@ -553,13 +804,18 @@ class Game {
     // Player
     if (this.player) this.player.render(ctx, this.cam);
     this.director.renderWorld(ctx, this.cam);
+    // Canopies, arches, and other tall scenery sit in a separate foreground
+    // layer. They fade when covering the player, preserving combat clarity.
+    this.renderProps(ctx, stage, 'foreground');
     // Particles
     this.particles.render(ctx, this.cam);
 
     ctx.restore();
 
+    this.renderWorldLighting(ctx, stage);
     // ===== Vignette + edge fade =====
     this.renderVignette(ctx, stage);
+    this.director.renderEventOverlay(ctx, this.cam);
   }
 
   // Tiled ground renderer. One tile = 32x32 design units.
@@ -578,7 +834,83 @@ class Game {
     const endY = camY + this.vh + ts;
     for (let y = startY; y < endY; y += ts) {
       for (let x = startX; x < endX; x += ts) {
-        ctx.drawImage(tile.image, x - camX, y - camY);
+        const gx = Math.floor(x / ts), gy = Math.floor(y / ts);
+        const variation = environmentRandom(gx, gy, stage.index * 23 + 19);
+        const altId = stage.id === 'forest' ? 'tile_forest_moss' :
+          stage.id === 'caves' ? 'tile_cave_glint' :
+          stage.id === 'castle' ? 'tile_castle_worn' : 'tile_lava_crack';
+        const image = variation > 0.84 && Sprite.has(altId) ? Sprite.get(altId).image : tile.image;
+        ctx.drawImage(image, x - camX, y - camY);
+      }
+    }
+  }
+
+  // Static-looking terrain dressing is derived from world cells rather than
+  // randomized every frame. It breaks up the repeated 32px tiles while
+  // remaining inexpensive and deterministic.
+  renderTerrainDetails(ctx, stage) {
+    const cam = this.cam;
+    const cell = 96;
+    const startX = Math.floor(cam.x / cell) * cell - cell;
+    const startY = Math.floor(cam.y / cell) * cell - cell;
+    const endX = cam.x + this.vw + cell;
+    const endY = cam.y + this.vh + cell;
+    const t = this.time;
+
+    for (let y = startY; y < endY; y += cell) {
+      for (let x = startX; x < endX; x += cell) {
+        const gx = Math.floor(x / cell), gy = Math.floor(y / cell);
+        const r = environmentRandom(gx, gy, stage.index * 41 + 3);
+        const sx = x - cam.x + 12 + environmentRandom(gx, gy, 8) * (cell - 24);
+        const sy = y - cam.y + 12 + environmentRandom(gx, gy, 9) * (cell - 24);
+
+        if (stage.id === 'forest') {
+          if (r < 0.47) {
+            ctx.fillStyle = `rgba(46,92,51,${0.11 + environmentRandom(gx, gy, 10) * 0.07})`;
+            ctx.beginPath();
+            ctx.ellipse(sx, sy, 17 + r * 18, 8 + r * 9, environmentRandom(gx, gy, 11) * Math.PI, 0, Math.PI * 2);
+            ctx.fill();
+          }
+          if (r > 0.73) {
+            ctx.strokeStyle = `rgba(89,133,62,${0.18 + Math.sin(t * 0.6 + gx + gy) * 0.04})`;
+            ctx.lineWidth = 1.2;
+            for (let blade = 0; blade < 4; blade++) {
+              const bx = sx + blade * 3, by = sy + (blade % 2) * 2;
+              ctx.beginPath();
+              ctx.moveTo(bx, by + 6);
+              ctx.lineTo(bx + (blade - 1.5) * 1.8, by - 3);
+              ctx.stroke();
+            }
+          }
+          if (r > 0.91) {
+            ctx.fillStyle = 'rgba(147,112,52,.2)';
+            for (let leaf = 0; leaf < 5; leaf++) {
+              ctx.save();
+              ctx.translate(sx + leaf * 4, sy + ((leaf * 7) % 12));
+              ctx.rotate(environmentRandom(gx, gy, 20 + leaf) * Math.PI);
+              ctx.fillRect(-2, -1, 4, 2);
+              ctx.restore();
+            }
+          }
+        } else if (stage.id === 'caves' && r > 0.52) {
+          ctx.fillStyle = `rgba(118,102,184,${0.08 + r * 0.1})`;
+          ctx.beginPath();
+          ctx.arc(sx, sy, 4 + r * 8, 0, Math.PI * 2);
+          ctx.fill();
+        } else if (stage.id === 'castle' && r > 0.58) {
+          ctx.strokeStyle = `rgba(118,44,86,${0.1 + r * 0.12})`;
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(sx - 12, sy + 7);
+          ctx.lineTo(sx + 4, sy - 6);
+          ctx.lineTo(sx + 14, sy + 4);
+          ctx.stroke();
+        } else if (stage.id === 'dragon' && r > 0.45) {
+          ctx.fillStyle = `rgba(224,73,28,${0.06 + r * 0.11})`;
+          ctx.beginPath();
+          ctx.ellipse(sx, sy, 10 + r * 12, 2 + r * 4, environmentRandom(gx, gy, 12) * Math.PI, 0, Math.PI * 2);
+          ctx.fill();
+        }
       }
     }
   }
@@ -634,47 +966,438 @@ class Game {
     }
   }
 
-  // Environmental props at deterministic positions. Recomputed on
-  // stage change; stored on the stage manager.
-  renderProps(ctx, stage) {
-    if (!this._props || this._propsStage !== stage.id) {
-      this._propsStage = stage.id;
-      this._props = [];
-      // Generate deterministic props around (0,0). When the player
-      // moves, these are culled and new ones added nearby.
-      // We make a 2000x2000 grid of props around origin.
-      const grid = 200;
-      const propSet = stage.id === 'forest'
-        ? ['prop_tree']
-        : stage.id === 'caves'
-        ? ['prop_crystal', 'prop_skull']
-        : stage.id === 'castle'
-        ? ['prop_torch', 'prop_skull']
-        : ['prop_lavabubble', 'prop_skull'];
-      for (let gx = -10; gx <= 10; gx++) {
-        for (let gy = -10; gy <= 10; gy++) {
-          // Deterministic seed
-          const seed = (gx * 73856093) ^ (gy * 19349663) ^ (stage.id.charCodeAt(0) * 31);
-          const r = ((seed & 0xFFFF) / 0xFFFF);
-          if (r > 0.18) continue;
-          const pid = propSet[(seed >> 8) % propSet.length];
-          this._props.push({
-            x: gx * grid + ((seed >> 4) & 127) - 64,
-            y: gy * grid + ((seed >> 12) & 127) - 64,
-            type: pid
-          });
+  resetEnvironment() {
+    // startNewRun can be reached from the menu before a prior stage has
+    // created the environment containers (and tests may use partial Game
+    // instances). Initialise defensively instead of failing the whole run.
+    this.environmentObjects ??= new Map();
+    this.environmentCells ??= new Set();
+    this.environmentSpatialHash ??= new Map();
+    this.environmentState ??= new Map();
+    this.environmentRenderBuffer ??= [];
+    this.environmentCellSize ??= 128;
+    this.environmentObjects.clear();
+    this.environmentCells.clear();
+    this.environmentSpatialHash.clear();
+    this.environmentState.clear();
+    this.environmentRenderBuffer.length = 0;
+    this.environmentPruneTimer = 2;
+    this.environmentStageId = null;
+  }
+
+  environmentGrid(stage) {
+    return stage.id === 'forest' ? 116 : 152;
+  }
+
+  ensureEnvironmentStage(stage) {
+    if (this.environmentStageId === stage.id) return;
+    this.environmentObjects.clear();
+    this.environmentCells.clear();
+    this.environmentSpatialHash.clear();
+    this.environmentState.clear();
+    this.environmentRenderBuffer.length = 0;
+    this.environmentStageId = stage.id;
+  }
+
+  treeStats(tree) {
+    return {
+      pine: { hp: 92, radius: 20 },
+      oak: { hp: 145, radius: 25 },
+      willow: { hp: 130, radius: 25 },
+      moonwood: { hp: 185, radius: 26 },
+      ancient: { hp: 285, radius: 34 }
+    }[tree] || { hp: 130, radius: 24 };
+  }
+
+  environmentHashKey(x, y) {
+    return `${Math.floor(x / this.environmentCellSize)},${Math.floor(y / this.environmentCellSize)}`;
+  }
+
+  indexEnvironmentObject(object) {
+    const key = this.environmentHashKey(object.x, object.y);
+    let bucket = this.environmentSpatialHash.get(key);
+    if (!bucket) {
+      bucket = new Set();
+      this.environmentSpatialHash.set(key, bucket);
+    }
+    bucket.add(object.id);
+  }
+
+  addEnvironmentObject(object) {
+    this.environmentState ??= new Map();
+    const saved = this.environmentState.get(object.id);
+    if (saved && object.destructible) {
+      object.hp = saved.hp;
+      object.state = saved.state;
+      object.solid = saved.solid;
+      object.fallTime = saved.fallTime;
+      object.fallDirection = saved.fallDirection;
+    }
+    this.environmentObjects.set(object.id, object);
+    this.indexEnvironmentObject(object);
+    return object;
+  }
+
+  generateEnvironmentCell(stage, gx, gy) {
+    this.ensureEnvironmentStage(stage);
+    const cellKey = `${stage.id}:${gx}:${gy}`;
+    if (this.environmentCells.has(cellKey)) return;
+    this.environmentCells.add(cellKey);
+
+    const grid = this.environmentGrid(stage);
+    const r = environmentRandom(gx, gy, stage.index * 97 + 1);
+    const cluster = environmentRandom(Math.floor(gx / 3), Math.floor(gy / 3), stage.index * 97 + 2);
+    const x = gx * grid + (environmentRandom(gx, gy, 3) - 0.5) * grid * 0.72;
+    const y = gy * grid + (environmentRandom(gx, gy, 4) - 0.5) * grid * 0.72;
+    const base = {
+      x, y, flipX: environmentRandom(gx, gy, 7) > 0.5,
+      phase: environmentRandom(gx, gy, 6) * Math.PI * 2, depth: y
+    };
+
+    if (stage.id === 'forest') {
+      // Keep the origin a predictable clearing. Unlike the old player-radius
+      // culling, this is static terrain and never changes as the player moves.
+      const originClearing = Math.hypot(x, y) < 168;
+      if (!originClearing && cluster > 0.48 && r < 0.46) {
+        const species = environmentRandom(gx, gy, 51);
+        const tree = species < 0.12 ? 'ancient' :
+          species < 0.31 ? 'pine' :
+          species < 0.47 ? 'willow' :
+          species < 0.59 ? 'moonwood' : 'oak';
+        const stats = this.treeStats(tree);
+        this.addEnvironmentObject({
+          ...base,
+          id: `${cellKey}:tree`,
+          kind: 'tree',
+          tree,
+          maxHp: stats.hp,
+          hp: stats.hp,
+          collisionRadius: stats.radius,
+          solid: true,
+          destructible: true,
+          state: 'alive',
+          hitFlash: 0,
+          fallTime: 0,
+          fallDuration: 0.58,
+          fallDirection: environmentRandom(gx, gy, 61) * Math.PI * 2
+        });
+      } else if (r < 0.23) {
+        const type = r < 0.07 ? 'prop_mushrooms' : r < 0.13 ? 'prop_fern' :
+          r < 0.18 ? 'prop_moss_rock' : 'prop_bush';
+        this.addEnvironmentObject({ ...base, id: `${cellKey}:low`, kind: 'low', type, solid: false });
+      }
+      if (!originClearing && cluster > 0.88 && environmentRandom(gx, gy, 33) < 0.025) {
+        this.addEnvironmentObject({ ...base, id: `${cellKey}:landmark`, kind: 'landmark', type: 'prop_forest_shrine', solid: false });
+      }
+    } else if (stage.id === 'caves') {
+      if (r < 0.17) this.addEnvironmentObject({
+        ...base, id: `${cellKey}:low`, kind: 'low',
+        type: r < 0.07 ? 'prop_stalagmites' : r < 0.12 ? 'prop_crystal' : 'prop_skull',
+        flipX: false, solid: false
+      });
+      if (cluster > 0.88 && environmentRandom(gx, gy, 34) < 0.025) {
+        this.addEnvironmentObject({ ...base, id: `${cellKey}:landmark`, kind: 'landmark', type: 'prop_crystal_altar', solid: false });
+      }
+    } else if (stage.id === 'castle' && r < 0.17) {
+      this.addEnvironmentObject({
+        ...base, id: `${cellKey}:low`, kind: 'low',
+        type: r < 0.06 ? 'prop_ruined_pillar' : r < 0.11 ? 'prop_brazier' : 'prop_skull',
+        flipX: false, solid: false
+      });
+    } else if (stage.id === 'dragon' && r < 0.19) {
+      this.addEnvironmentObject({
+        ...base, id: `${cellKey}:low`, kind: 'low',
+        type: r < 0.07 ? 'prop_dragon_bones' : r < 0.13 ? 'prop_lava_vent' : 'prop_lavabubble',
+        flipX: false, solid: false
+      });
+    }
+  }
+
+  ensureEnvironmentAround(stage, x, y, padding = 2) {
+    if (!stage) return;
+    this.ensureEnvironmentStage(stage);
+    const grid = this.environmentGrid(stage);
+    const gx = Math.floor(x / grid);
+    const gy = Math.floor(y / grid);
+    for (let ix = gx - padding; ix <= gx + padding; ix++) {
+      for (let iy = gy - padding; iy <= gy + padding; iy++) {
+        this.generateEnvironmentCell(stage, ix, iy);
+      }
+    }
+  }
+
+  getNearbyEnvironment(x, y, radius = 0, solidOnly = false) {
+    const stage = this.stage ? STAGES[this.stage.index] : null;
+    if (stage) this.ensureEnvironmentAround(stage, x, y, Math.ceil((radius + 80) / this.environmentGrid(stage)) + 1);
+    const range = Math.ceil(radius / this.environmentCellSize) + 1;
+    const gx = Math.floor(x / this.environmentCellSize);
+    const gy = Math.floor(y / this.environmentCellSize);
+    const nearby = [];
+    for (let ix = gx - range; ix <= gx + range; ix++) {
+      for (let iy = gy - range; iy <= gy + range; iy++) {
+        const bucket = this.environmentSpatialHash.get(`${ix},${iy}`);
+        if (!bucket) continue;
+        for (const id of bucket) {
+          const object = this.environmentObjects.get(id);
+          if (object && (!solidOnly || object.solid)) nearby.push(object);
         }
       }
     }
-    // Cull and draw props near camera
-    const cam = this.cam;
-    for (const p of this._props) {
-      const dx = p.x - cam.x;
-      const dy = p.y - cam.y;
-      if (dx < -80 || dy < -80 || dx > cam.vw + 80 || dy > cam.vh + 80) continue;
-      if (Sprite.has(p.type)) {
-        const s = Sprite.get(p.type);
-        Sprite.draw(ctx, p.type, dx, dy);
+    return nearby;
+  }
+
+  updateEnvironment(dt) {
+    for (const object of this.environmentObjects.values()) {
+      object.hitFlash = Math.max(0, (object.hitFlash || 0) - dt);
+      if (object.state !== 'falling') continue;
+      object.fallTime -= dt;
+      // The trunk blocks movement during the first part of the fall, then
+      // becomes a low stump so neither actors nor projectiles get trapped.
+      if (object.fallTime < object.fallDuration * 0.42) object.solid = false;
+      if (object.fallTime <= 0) {
+        object.fallTime = 0;
+        object.state = 'stump';
+        object.solid = false;
+        this.rememberEnvironmentState(object);
+      }
+    }
+    this.environmentPruneTimer -= dt;
+    if (this.environmentPruneTimer <= 0 && this.player) {
+      this.environmentPruneTimer = 2;
+      this.pruneEnvironment(this.player.x, this.player.y);
+    }
+  }
+
+  rememberEnvironmentState(object) {
+    if (!object?.destructible || (object.state === 'alive' && object.hp === object.maxHp)) return;
+    this.environmentState.delete(object.id);
+    this.environmentState.set(object.id, {
+      hp: object.hp,
+      state: object.state,
+      solid: object.solid,
+      fallTime: object.fallTime,
+      fallDirection: object.fallDirection
+    });
+    if (this.environmentState.size > 2048) {
+      this.environmentState.delete(this.environmentState.keys().next().value);
+    }
+  }
+
+  pruneEnvironment(centerX, centerY, radius = 2200) {
+    const radiusSq = radius * radius;
+    for (const [id, object] of this.environmentObjects) {
+      if (Utils.dist2(centerX, centerY, object.x, object.y) <= radiusSq) continue;
+      this.rememberEnvironmentState(object);
+      this.environmentObjects.delete(id);
+      const key = this.environmentHashKey(object.x, object.y);
+      const bucket = this.environmentSpatialHash.get(key);
+      bucket?.delete(id);
+      if (bucket?.size === 0) this.environmentSpatialHash.delete(key);
+    }
+    const stage = this.stage ? STAGES[this.stage.index] : null;
+    if (!stage) return;
+    const grid = this.environmentGrid(stage);
+    const cellRadius = Math.ceil(radius / grid) + 1;
+    const centerGx = Math.floor(centerX / grid);
+    const centerGy = Math.floor(centerY / grid);
+    for (const key of this.environmentCells) {
+      const parts = key.split(':');
+      const gx = Number(parts[1]);
+      const gy = Number(parts[2]);
+      if (Math.abs(gx - centerGx) > cellRadius || Math.abs(gy - centerGy) > cellRadius) {
+        this.environmentCells.delete(key);
+      }
+    }
+  }
+
+  environmentProps(stage) {
+    const centerX = this.cam.x + this.vw * 0.5;
+    const centerY = this.cam.y + this.vh * 0.5;
+    const span = Math.max(this.vw, this.vh) * 0.55 + 220;
+    this.ensureEnvironmentAround(stage, centerX, centerY, Math.ceil(span / this.environmentGrid(stage)) + 1);
+    const left = this.cam.x - 220, right = this.cam.x + this.vw + 220;
+    const top = this.cam.y - 260, bottom = this.cam.y + this.vh + 220;
+    const props = this.environmentRenderBuffer;
+    props.length = 0;
+    for (const object of this.environmentObjects.values()) {
+      if (object.x >= left && object.x <= right && object.y >= top && object.y <= bottom) {
+        props.push(object);
+      }
+    }
+    props.sort((a, b) => a.depth - b.depth);
+    return props;
+  }
+
+  moveActorWithEnvironment(actor, dx, dy, radius) {
+    const distance = Math.hypot(dx, dy);
+    const steps = Math.max(1, Math.min(12, Math.ceil(distance / Math.max(4, radius * 0.55))));
+    for (let step = 0; step < steps; step++) {
+      actor.x += dx / steps;
+      actor.y += dy / steps;
+      this.resolveEnvironmentCollision(actor, radius);
+    }
+  }
+
+  resolveEnvironmentCollision(actor, radius) {
+    const nearby = this.getNearbyEnvironment(actor.x, actor.y, radius + 48, true);
+    for (let pass = 0; pass < 3; pass++) {
+      let corrected = false;
+      for (const object of nearby) {
+        const minDistance = radius + object.collisionRadius;
+        let dx = actor.x - object.x;
+        let dy = actor.y - object.y;
+        let distance = Math.hypot(dx, dy);
+        if (distance >= minDistance) continue;
+        if (distance < 0.0001) {
+          const angle = environmentRandom(Math.floor(object.x), Math.floor(object.y), 93) * Math.PI * 2;
+          dx = Math.cos(angle);
+          dy = Math.sin(angle);
+          distance = 1;
+        }
+        const push = minDistance - distance + 0.02;
+        actor.x += dx / distance * push;
+        actor.y += dy / distance * push;
+        corrected = true;
+      }
+      if (!corrected) break;
+    }
+  }
+
+  traceEnvironmentHit(x0, y0, x1, y1, projectileRadius = 0) {
+    const dx = x1 - x0;
+    const dy = y1 - y0;
+    const lengthSq = dx * dx + dy * dy || 1;
+    const searchRadius = Math.hypot(dx, dy) * 0.5 + projectileRadius + 48;
+    const candidates = this.getNearbyEnvironment((x0 + x1) * 0.5, (y0 + y1) * 0.5, searchRadius, true);
+    let result = null;
+    for (const object of candidates) {
+      const t = Utils.clamp(((object.x - x0) * dx + (object.y - y0) * dy) / lengthSq, 0, 1);
+      const hx = x0 + dx * t;
+      const hy = y0 + dy * t;
+      const hitRadius = object.collisionRadius + projectileRadius;
+      if (Utils.dist2(hx, hy, object.x, object.y) > hitRadius * hitRadius) continue;
+      if (!result || t < result.t) result = { object, t, x: hx, y: hy };
+    }
+    return result;
+  }
+
+  damageEnvironmentObject(object, amount, source = null, hitX = object?.x, hitY = object?.y) {
+    if (!object || !object.destructible || object.state !== 'alive') return false;
+    object.hp = Math.max(0, object.hp - Math.max(0, amount));
+    object.hitFlash = 0.12;
+    this.particles.spawnSparkBurst(hitX, hitY, '#b97845', 5);
+    this.rememberEnvironmentState(object);
+    if (object.hp > 0) {
+      Audio.play?.('combat.impact', { x: hitX, y: hitY, power: amount / 22, material: 'stone' });
+      return true;
+    }
+    object.state = 'falling';
+    object.fallTime = object.fallDuration;
+    object.fallDirection = Math.atan2(object.y - (source?.y ?? object.y), object.x - (source?.x ?? object.x));
+    this.rememberEnvironmentState(object);
+    this.particles.spawnRing(object.x, object.y, '#8b5a32', object.collisionRadius * 1.55);
+    this.particles.spawnBurst(object.x, object.y - 20, '#b97845', 18, 165);
+    this.shake.trigger(2.5);
+    Audio.play?.('combat.explosion', { x: object.x, y: object.y, power: 0.34 });
+    return true;
+  }
+
+  damageEnvironmentInRadius(x, y, radius, amount, source = null) {
+    for (const object of this.getNearbyEnvironment(x, y, radius, true)) {
+      const reach = radius + object.collisionRadius;
+      const distance = Math.hypot(object.x - x, object.y - y);
+      if (distance > reach) continue;
+      const falloff = 1 - distance / Math.max(1, reach);
+      this.damageEnvironmentObject(object, amount * (0.45 + falloff * 0.55), source, object.x, object.y);
+    }
+  }
+
+  drawAnchoredProp(ctx, id, x, y, opts = {}) {
+    if (!Sprite.has(id)) return;
+    const s = Sprite.get(id);
+    const bounds = s.bounds || { left: 0, right: s.w - 1, bottom: s.h - 1 };
+    const visualCenterX = (bounds.left + bounds.right + 1) / 2;
+    const anchorBottom = bounds.bottom + 1;
+    ctx.save();
+    ctx.globalAlpha = opts.alpha ?? 1;
+    if (opts.flipX) {
+      ctx.translate(x, y);
+      ctx.scale(-1, 1);
+      ctx.drawImage(s.image, -visualCenterX, -anchorBottom);
+    } else {
+      ctx.drawImage(s.image, x - visualCenterX, y - anchorBottom);
+    }
+    ctx.restore();
+  }
+
+  renderTreeStump(ctx, p, sx, sy) {
+    const wobble = Math.sin(p.phase * 3) * 1.5;
+    ctx.save();
+    ctx.translate(sx, sy);
+    ctx.fillStyle = 'rgba(0,0,0,.28)';
+    ctx.beginPath();
+    ctx.ellipse(0, 3, p.collisionRadius * 0.9, p.collisionRadius * 0.34, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#4a2d25';
+    ctx.beginPath();
+    ctx.ellipse(wobble, -4, Math.max(12, p.collisionRadius * 0.65), Math.max(7, p.collisionRadius * 0.32), 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#835038';
+    ctx.beginPath();
+    ctx.ellipse(wobble, -6, Math.max(9, p.collisionRadius * 0.49), Math.max(4, p.collisionRadius * 0.19), 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#c58a51';
+    ctx.fillRect(wobble - 3, -8, 6, 2);
+    ctx.restore();
+  }
+
+  // Environment props are persistent entities. Tree state drives both the
+  // visuals and the collision system, so a close camera can never make one
+  // disappear or turn passable.
+  renderProps(ctx, stage, layer = 'ground') {
+    const props = this.environmentProps(stage);
+    for (const p of props) {
+      const sx = p.x - this.cam.x;
+      const sy = p.y - this.cam.y;
+      if (p.kind === 'tree') {
+        if (p.state === 'stump') {
+          if (layer === 'ground') this.renderTreeStump(ctx, p, sx, sy);
+          continue;
+        }
+        const trunk = `prop_tree_trunk_${p.tree}`;
+        const canopy = `prop_tree_canopy_${p.tree}`;
+        const fallingProgress = p.state === 'falling'
+          ? 1 - p.fallTime / Math.max(0.001, p.fallDuration)
+          : 0;
+        const fallOffsetX = Math.cos(p.fallDirection) * fallingProgress * 28;
+        const fallOffsetY = Math.sin(p.fallDirection) * fallingProgress * 8;
+        if (layer === 'ground') {
+          this.drawAnchoredProp(ctx, trunk, sx + fallOffsetX * 0.25, sy + fallOffsetY * 0.25, {
+            flipX: p.flipX,
+            alpha: p.hitFlash > 0 ? 0.78 : 1
+          });
+        } else if (layer === 'foreground') {
+          const canopySprite = Sprite.get(canopy);
+          if (!canopySprite) continue;
+          const swayStrength = p.tree === 'willow' ? 2.5 : p.tree === 'ancient' ? 2.1 : 1.35;
+          const sway = Math.sin(this.time * 0.72 + p.phase) * swayStrength;
+          // Each crown overlaps the upper trunk substantially. The canopy
+          // bitmaps are bottom-aligned, so these lifts are now explicit and
+          // stable instead of depending on invisible canvas padding.
+          const canopyLift = {
+            oak: 43,
+            pine: 45,
+            ancient: 48,
+            willow: 47,
+            moonwood: 46
+          }[p.tree] || 38;
+          const canopyBaseY = sy - canopyLift + fallOffsetY;
+          this.drawAnchoredProp(ctx, canopy, sx + sway + fallOffsetX, canopyBaseY, {
+            flipX: p.flipX, alpha: p.hitFlash > 0 ? 0.86 : 1
+          });
+        }
+      } else if (layer === 'ground') {
+        this.drawAnchoredProp(ctx, p.type, sx, sy, { flipX: p.flipX });
       }
     }
   }
@@ -774,5 +1497,39 @@ class Game {
     fog.addColorStop(1, 'rgba(14,116,144,.13)');
     ctx.fillStyle = fog;
     ctx.fillRect(0, 400, this.vw, this.vh - 400);
+  }
+
+  renderWorldLighting(ctx, stage) {
+    const palette = {
+      forest: ['rgba(4,18,13,.18)', 'rgba(112,255,176,.14)'],
+      caves: ['rgba(7,5,24,.24)', 'rgba(107,146,255,.16)'],
+      castle: ['rgba(18,4,24,.22)', 'rgba(221,128,255,.13)'],
+      dragon: ['rgba(28,4,0,.18)', 'rgba(255,111,55,.18)']
+    }[stage.id] || ['rgba(5,7,18,.18)', 'rgba(145,180,255,.12)'];
+
+    ctx.save();
+    ctx.fillStyle = palette[0];
+    ctx.fillRect(0, 0, this.vw, this.vh);
+
+    if (this.player) {
+      const px = this.player.x - this.cam.x;
+      const py = this.player.y - this.cam.y;
+      const glow = ctx.createRadialGradient(px, py, 18, px, py, 250);
+      glow.addColorStop(0, palette[1]);
+      glow.addColorStop(.42, palette[1].replace(/[\d.]+\)$/, '.06)'));
+      glow.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.globalCompositeOperation = 'screen';
+      ctx.fillStyle = glow;
+      ctx.fillRect(px - 250, py - 250, 500, 500);
+    }
+
+    const horizon = ctx.createLinearGradient(0, 0, 0, this.vh);
+    horizon.addColorStop(0, 'rgba(255,255,255,.025)');
+    horizon.addColorStop(.55, 'rgba(255,255,255,0)');
+    horizon.addColorStop(1, 'rgba(0,0,0,.12)');
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = horizon;
+    ctx.fillRect(0, 0, this.vw, this.vh);
+    ctx.restore();
   }
 }

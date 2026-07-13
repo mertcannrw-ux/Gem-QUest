@@ -4,8 +4,6 @@ A **Vampire Survivors-style arena roguelite** built in vanilla HTML5 Canvas + Ja
 
 You just move. Weapons fire automatically. Pick up gems to level up, grab coins to buy permanent upgrades, defeat waves of fantasy monsters, and conquer 4 themed stages culminating in a dragon boss.
 
-![Loading screen](assets/loading.png)
-
 ## 🎮 How to Play
 
 - **Move:** `WASD` or `ZQSD`
@@ -28,7 +26,7 @@ You just move. Weapons fire automatically. Pick up gems to level up, grab coins 
 - ⌨️ **AZERTY + QWERTY** keyboard layouts
 - 🔊 **Procedural Web Audio SFX** — no audio files
 - 🎨 **Procedural pixel-art sprites** — entire game < 350 KB
-- 🤖 **AI-generated backgrounds** for the loading screen and main menu
+- 🌌 **Procedural backgrounds** for the boot screen and main menu
 - 💾 **Persistent progress** via localStorage + CrazyGames SDK
 
 ## 🚀 Running Locally
@@ -50,8 +48,8 @@ npm ci
 npm run verify
 ```
 
-`npm run verify` performs JavaScript syntax checks, validates local asset
-references, rejects unsafe browser APIs and obsolete SDK calls, enforces the
+`npm run verify` performs JavaScript syntax checks, validates source and built
+asset references, rejects unsafe browser APIs and obsolete SDK calls, enforces
 platform size/file limits, and runs the automated unit + server security tests.
 GitHub Actions runs the same command for every pull request and push to `main`.
 
@@ -62,18 +60,14 @@ Gem-QUest/
 ├── index.html              Entry point + CrazySDK loader
 ├── styles.css              Boot screen + 16:9 letterbox
 ├── serve.js                Tiny Node.js dev server
-├── assets/                 AI-generated backgrounds
-│   ├── loading.png         Loading screen art
-│   ├── menu_bg.png         Main menu background
-│   └── menu_bg_alt.png     Alternate menu background
 ├── js/
 │   ├── utils.js            Math, RNG, shake, formatters
-│   ├── sdk.js              CrazySDK wrapper (graceful fallback)
+│   ├── sdk-loader.js       Non-blocking CrazyGames SDK bootstrap
+│   ├── sdk.js              CrazyGames wrapper + resilient persistence
 │   ├── audio.js            Procedural Web Audio SFX
 │   ├── input.js            Keyboard (WASD+ZQSD) + touch joystick
 │   ├── particles.js        Typed-array particle system
 │   ├── sprites.js          ★ Procedural pixel-art sprite cache
-│   ├── assets.js           AI art loader (graceful fallback)
 │   ├── data.js             ★ 25+ items, 8 enemies, 4 bosses, 4 stages
 │   ├── mechanics.js        RunDirector, elite modifiers, item synergies, world events
 │   ├── player.js           Player + auto-attack + item effects
@@ -122,8 +116,10 @@ The main `loop` is wrapped in `try { update; render; } catch (e) { log }`. This 
 
 ### Save / restore
 
-- CrazyGames SDK v3 data module with a `localStorage` fallback
+- Non-blocking CrazyGames SDK v3 loading with a `localStorage` fallback
 - Versioned `saveData` schema containing coins, unlocked stages, and shop levels
+- Revisioned local/cloud save envelopes that keep newer local progress from
+  being overwritten by stale cloud responses
 - `SDK.save(key, value)` / `SDK.load(key, default)`
 - `game.persistMeta()` saves after every death / victory
 - `main.js` restores before the first frame

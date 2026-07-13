@@ -57,9 +57,8 @@ node serve.js
 # open http://localhost:8080
 ```
 
-> The original workspace folder `C:\Users\Schueler\Desktop\Gmae development `
-> (note the trailing space) has PowerShell path issues. The clean copy at
-> `C:\Users\Schueler\Desktop\GemQuest` is the one to keep using.
+> Use a normal workspace path without trailing spaces. Trailing spaces in a
+> Windows directory name can cause PowerShell and tooling failures.
 
 ---
 

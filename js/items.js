@@ -35,10 +35,10 @@ const ITEMS_RUNTIME = {
         g.y += (dy / d) * sp * dt;
       }
       if (Utils.distO(g, p) < p.r + 4) {
-        if (p.gainXp(g.amount)) {
-          game.onPlayerLevelUp();
-        }
-        Audio.coin();
+        const comboMult = game.director ? game.director.comboMultiplier() : 1;
+        const levelsGained = p.gainXp(g.amount * comboMult);
+        if (levelsGained > 0) game.onPlayerLevelUp(levelsGained);
+          Audio.play?.('pickup.gem', { x: p.x, y: p.y });
         this.gems.splice(i, 1);
       }
     }
@@ -56,8 +56,9 @@ const ITEMS_RUNTIME = {
         c.y += (dy / d) * sp * dt;
       }
       if (Utils.distO(c, p) < p.r + 4) {
-        p.addCoins(c.amount);
-        Audio.coin();
+        const comboMult = game.director ? game.director.comboMultiplier() : 1;
+        p.addCoins(c.amount * comboMult);
+          Audio.play?.('pickup.coin', { x: c.x, y: c.y });
         game.particles.spawnFloat(c.x, c.y - 8, '+' + Math.floor(c.amount), '#ffd84a');
         this.coins.splice(i, 1);
       }

@@ -11,6 +11,17 @@
  *   boss_* - scripted multi-phase patterns
  */
 
+function lineMutation(ctx, points, color, width = 2) {
+  ctx.beginPath();
+  ctx.moveTo(points[0][0], points[0][1]);
+  for (let i = 1; i < points.length; i++) ctx.lineTo(points[i][0], points[i][1]);
+  ctx.strokeStyle = color;
+  ctx.lineWidth = width;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.stroke();
+}
+
 class Enemy {
   constructor(typeId, x, y) {
     const t = ENEMIES[typeId];
@@ -32,8 +43,18 @@ class Enemy {
 
   takeDamage(amount, from, game) {
     if (!this.alive) return;
-    this.hp -= amount;
+    const isPlayerAttack = from && from === game?.player;
+    const resistance = isPlayerAttack ? (this.projectileResistance || 0) : 0;
+    this.hp -= amount * (1 - resistance);
     this.flash = 0.08;
+    if (this.hp > 0) {
+      Audio.play?.('combat.impact', {
+        x: this.x, y: this.y,
+        power: amount / Math.max(1, this.maxHp * 0.18),
+        material: this.audioMaterial,
+        critical: Boolean(from?.lastAttackWasCrit)
+      });
+    }
     if (this.hp <= 0) {
       this.die(from, game);
     }
@@ -42,7 +63,12 @@ class Enemy {
   die(killer, game) {
     if (!this.alive) return;
     this.alive = false;
-    Audio.hit();
+    Audio.play?.('enemy.death', {
+      x: this.x, y: this.y,
+      material: this.audioMaterial,
+      boss: this.boss,
+      elite: Boolean(this.elite)
+    });
     // Credit the kill to the player (only for non-boss kills;
     // boss kills are credited in onBossKill to avoid double-counting)
     if (!this.boss && killer && killer.kills !== undefined) {
@@ -64,12 +90,13 @@ class Enemy {
           e.takeDamage(40, killer, game);
         }
       }
+      game.damageEnvironmentInRadius?.(this.x, this.y, 100, 44, killer);
     }
 
     // Explosion (Bomb item)
     const explode = killerStats ? killerStats.explode : 0;
     if (explode > 0) {
-      Audio.explosion();
+      Audio.play?.('combat.explosion', { x: this.x, y: this.y, power: 1 + explode * 0.5 });
       game.shake.trigger(6);
       const radius = this.size * (1 + explode);
       game.particles.spawnRing(this.x, this.y, '#fbbf24', radius);
@@ -80,6 +107,8 @@ class Enemy {
           e.takeDamage(dmg, killer, game);
         }
       }
+      game.damageEnvironmentInRadius?.(this.x, this.y, radius, dmg, killer);
+      game.director?.triggerStarfall(this, killer, dmg);
     }
     // Drop XP
     if (this.xp > 0) {
@@ -91,7 +120,6 @@ class Enemy {
     }
     game.particles.spawnBurst(this.x, this.y, this.color, 8, 120);
     if (this.boss) {
-      Audio.bossSpawn();
       game.shake.trigger(8);
       game.particles.spawnBurst(this.x, this.y, '#fbbf24', 50, 300);
       game.onBossKill(this);
@@ -160,21 +188,20 @@ class Enemy {
     const slow = 1 - this.slowAmount;
     const enemySlow = p ? Utils.clamp(p.stats().enemySlow, 0, 0.8) : 0;
     const effectiveSpeed = this.speed * slow * (1 - enemySlow);
+    if (this.elite?.rare && this.updateRareMutation(dt, game, p, d)) return;
 
     // Behaviour
     switch (this.ai) {
       case 'chase': {
         if (!this.stationary) {
-          this.x += (dx / d) * effectiveSpeed * dt;
-          this.y += (dy / d) * effectiveSpeed * dt;
+          this.moveWithEnvironment(game, (dx / d) * effectiveSpeed * dt, (dy / d) * effectiveSpeed * dt);
         }
         break;
       }
       case 'kite': {
         const desired = 140;
         const move = d < desired ? -1 : (d > desired + 60 ? 1 : 0);
-        this.x += (dx / d) * effectiveSpeed * move * dt;
-        this.y += (dy / d) * effectiveSpeed * move * dt;
+        this.moveWithEnvironment(game, (dx / d) * effectiveSpeed * move * dt, (dy / d) * effectiveSpeed * move * dt);
         this.maybeShoot(dt, p, game);
         break;
       }
@@ -182,14 +209,12 @@ class Enemy {
         const lateral = Math.sin((game.time + this.x) * 5) * 80;
         const ax = dx / d, ay = dy / d;
         const lx = -ay, ly = ax;
-        this.x += (ax * effectiveSpeed + lx * lateral) * dt;
-        this.y += (ay * effectiveSpeed + ly * lateral) * dt;
+        this.moveWithEnvironment(game, (ax * effectiveSpeed + lx * lateral) * dt, (ay * effectiveSpeed + ly * lateral) * dt);
         break;
       }
       case 'shoot': {
         if (d > 200) {
-          this.x += (dx / d) * effectiveSpeed * dt;
-          this.y += (dy / d) * effectiveSpeed * dt;
+          this.moveWithEnvironment(game, (dx / d) * effectiveSpeed * dt, (dy / d) * effectiveSpeed * dt);
         }
         this.maybeShoot(dt, p, game);
         break;
@@ -203,6 +228,7 @@ class Enemy {
           const dist = 220;
           this.x = p.x + Math.cos(a) * dist;
           this.y = p.y + Math.sin(a) * dist;
+          game.resolveEnvironmentCollision?.(this, this.size * 0.45);
           game.particles.spawnRing(this.x, this.y, '#a78bfa', 30);
         }
         break;
@@ -217,6 +243,10 @@ class Enemy {
       case 'boss_dragon':   this.bossDragon(dt, p, game, effectiveSpeed); break;
     }
 
+    // Boss scripts and rare mutations can reposition directly. Resolve their
+    // final position too, preventing any path from leaving an enemy in a tree.
+    game.resolveEnvironmentCollision?.(this, this.size * 0.45);
+
     // Hit player on contact
     if (d < this.size * 0.6 + p.r && this.dmg > 0) {
       const wasInvulnerable = p.invuln > 0;
@@ -225,6 +255,58 @@ class Enemy {
         this.hp = Math.min(this.maxHp, this.hp + this.maxHp * 0.035);
       }
     }
+  }
+
+  updateRareMutation(dt, game, p, distanceToPlayer) {
+    this.mutationTimer -= dt;
+    if (this.mutationTimer > 0) return false;
+
+    if (this.elite.id === 'riftborn') {
+      this.mutationTimer = 3.8 + Math.random() * 1.7;
+      const oldX = this.x, oldY = this.y;
+      const a = Math.atan2(p.y - this.y, p.x - this.x) + Utils.range(-0.8, 0.8);
+      const range = Math.min(185, Math.max(100, distanceToPlayer * 0.42));
+      this.x += Math.cos(a) * range;
+      this.y += Math.sin(a) * range;
+      game.particles.spawnRing(oldX, oldY, this.elite.color, 54);
+      game.particles.spawnRing(this.x, this.y, '#f5d0fe', 68);
+      game.particles.spawnSparkBurst(oldX, oldY, this.elite.color, 14);
+      game.particles.spawnSparkBurst(this.x, this.y, '#f5d0fe', 16);
+      return true;
+    } else if (this.elite.id === 'stormcaller') {
+      this.mutationTimer = 4.2 + Math.random() * 1.1;
+      const base = Math.atan2(p.y - this.y, p.x - this.x);
+      for (let i = 0; i < 10; i++) {
+        const a = base + i * Math.PI * 2 / 10;
+        game.enemyProjectiles.push(new Projectile({
+          x: this.x, y: this.y,
+          vx: Math.cos(a) * 175, vy: Math.sin(a) * 175,
+          size: 8, dmg: this.dmg * 0.72, owner: this, enemy: true,
+          color: this.elite.color, kind: 'storm', life: 3.2
+        }));
+      }
+      game.particles.spawnRing(this.x, this.y, '#ecfeff', 120);
+      game.particles.spawnSparkBurst(this.x, this.y, this.elite.color, 24);
+      game.shake.trigger(3);
+      Audio.play?.('enemy.attack', { x: this.x, y: this.y, kind: 'storm', power: 1 });
+    } else if (this.elite.id === 'broodmother') {
+      this.mutationTimer = 5.5 + Math.random() * 1.8;
+      const childType = this.id === 'spider' ? 'spider' : (ENEMIES.slime ? 'slime' : this.id);
+      for (let i = 0; i < 3; i++) {
+        const a = i * Math.PI * 2 / 3 + this._wob;
+        const child = new Enemy(childType, this.x + Math.cos(a) * 42, this.y + Math.sin(a) * 42);
+        child.maxHp = Math.max(4, Math.round(child.maxHp * 0.48));
+        child.hp = child.maxHp;
+        child.size *= 0.72;
+        child.xp = Math.max(1, Math.floor(child.xp * 0.4));
+        child.coin = 0;
+        child.spawnedByMutation = true;
+        game.enemies.push(child);
+      }
+      game.particles.spawnRing(this.x, this.y, this.elite.color, 95);
+      game.particles.spawnBurst(this.x, this.y, this.elite.color, 18, 170);
+    }
+    return false;
   }
 
   maybeShoot(dt, p, game) {
@@ -240,6 +322,7 @@ class Enemy {
         size: 6, dmg: this.dmg, owner: this, enemy: true,
         color: '#f43f5e', life: 3
       }));
+      Audio.play?.('enemy.attack', { x: this.x, y: this.y, kind: 'projectile' });
     }
   }
 
@@ -263,7 +346,7 @@ class Enemy {
           color: '#16a34a', life: 3
         }));
       }
-      Audio.shootBig();
+      Audio.play?.('enemy.attack', { x: this.x, y: this.y, kind: 'root', boss: true });
     }
   }
 
@@ -286,6 +369,7 @@ class Enemy {
           color: '#a855f7', life: 4, reflect: 0.5
         }));
       }
+      Audio.play?.('enemy.attack', { x: this.x, y: this.y, kind: 'crystal', boss: true });
     }
   }
 
@@ -305,6 +389,7 @@ class Enemy {
         game.enemies.push(new Enemy('skeleton', this.x + Math.cos(a) * 60, this.y + Math.sin(a) * 60));
       }
       game.particles.spawnRing(this.x, this.y, '#9f1239', 60);
+      Audio.play?.('enemy.attack', { x: this.x, y: this.y, kind: 'summon', boss: true });
     }
   }
 
@@ -330,14 +415,171 @@ class Enemy {
           color: '#fbbf24', life: 2
         }));
       }
+      Audio.play?.('enemy.attack', { x: this.x, y: this.y, kind: 'fire', boss: true });
     }
+  }
+
+  renderMutationUnderlay(ctx, sx, sy) {
+    if (!this.elite) return;
+    const t = performance.now() * 0.001;
+    const rare = this.elite.rare;
+    const r = this.size * (rare ? 0.82 : 0.68);
+    ctx.save();
+    ctx.translate(sx, sy);
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.shadowColor = this.elite.color;
+    ctx.shadowBlur = rare ? 30 : 18;
+
+    // Multi-ring mutation field with opposing rotations.
+    for (let ring = 0; ring < (rare ? 3 : 2); ring++) {
+      ctx.save();
+      ctx.rotate(t * (ring % 2 ? -0.65 : 0.48) + this._wob);
+      ctx.strokeStyle = ring === 1 ? '#f8fafc' : this.elite.color;
+      ctx.globalAlpha = rare ? 0.6 - ring * 0.11 : 0.42 - ring * 0.12;
+      ctx.lineWidth = rare && ring === 0 ? 4 : 2;
+      ctx.setLineDash(rare ? [7 + ring * 3, 8] : [4, 10]);
+      ctx.beginPath();
+      ctx.arc(0, 0, r + ring * (rare ? 11 : 7), 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+    ctx.setLineDash([]);
+
+    if (rare) {
+      // Orbiting mutation shards advertise the rare enemy before it attacks.
+      for (let i = 0; i < 6; i++) {
+        const a = t * (i % 2 ? -1.25 : 1.05) + i * Math.PI / 3 + this._wob;
+        const orbit = r + 18 + (i % 2) * 8;
+        ctx.save();
+        ctx.translate(Math.cos(a) * orbit, Math.sin(a) * orbit * 0.72);
+        ctx.rotate(a + Math.PI / 4);
+        ctx.fillStyle = i % 2 ? '#ffffff' : this.elite.color;
+        ctx.globalAlpha = 0.8;
+        ctx.fillRect(-4, -4, 8, 8);
+        ctx.restore();
+      }
+    }
+    ctx.restore();
+  }
+
+  renderMutationOverlay(ctx, sx, sy) {
+    if (!this.elite) return;
+    const t = performance.now() * 0.001;
+    const r = this.size * 0.54;
+    const c = this.elite.color;
+    ctx.save();
+    ctx.translate(sx, sy);
+    ctx.strokeStyle = '#050711';
+    ctx.fillStyle = c;
+    ctx.lineWidth = Math.max(2, this.size * 0.055);
+    ctx.lineJoin = 'round';
+    ctx.shadowColor = c;
+    ctx.shadowBlur = this.elite.rare ? 18 : 9;
+
+    const shard = (x, y, rot, length = r * 0.65, width = r * 0.25, fill = c) => {
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(rot);
+      ctx.beginPath();
+      ctx.moveTo(0, -length);
+      ctx.lineTo(width, 0);
+      ctx.lineTo(0, length * 0.2);
+      ctx.lineTo(-width, 0);
+      ctx.closePath();
+      ctx.fillStyle = fill;
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+    };
+
+    switch (this.elite.visual) {
+      case 'fins':
+        shard(-r * .8, -r * .2, -1.4, r * .65, r * .22);
+        shard(r * .8, -r * .2, 1.4, r * .65, r * .22);
+        lineMutation(ctx, [[-r * .8, r * .35], [-r * 1.3, r * .55]], c, 3);
+        lineMutation(ctx, [[r * .8, r * .35], [r * 1.3, r * .55]], c, 3);
+        break;
+      case 'armor':
+        for (const side of [-1, 1]) {
+          ctx.save();
+          ctx.scale(side, 1);
+          ctx.beginPath();
+          ctx.moveTo(r * .35, -r * .85);
+          ctx.lineTo(r * 1.05, -r * .55);
+          ctx.lineTo(r * 1.18, r * .15);
+          ctx.lineTo(r * .65, r * .5);
+          ctx.lineTo(r * .42, 0);
+          ctx.closePath();
+          ctx.fillStyle = '#8a6410';
+          ctx.fill();
+          ctx.stroke();
+          lineMutation(ctx, [[r * .52, -r * .55], [r * .9, -r * .36]], '#fde68a', 2);
+          ctx.restore();
+        }
+        break;
+      case 'horns':
+        shard(-r * .52, -r * .72, -.48, r * .72, r * .2, '#fda4af');
+        shard(r * .52, -r * .72, .48, r * .72, r * .2, '#fda4af');
+        ctx.fillStyle = '#fff1f2';
+        ctx.beginPath(); ctx.arc(-r * .32, -r * .1, r * .12, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        ctx.beginPath(); ctx.arc(r * .32, -r * .1, r * .12, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        break;
+      case 'cracks':
+        for (let i = 0; i < 5; i++) {
+          const a = i * Math.PI * 2 / 5 + this._wob;
+          const x = Math.cos(a) * r * .8, y = Math.sin(a) * r * .7;
+          lineMutation(ctx, [[x * .35, y * .35], [x, y], [x + Math.sin(a) * r * .22, y - Math.cos(a) * r * .22]], '#fff7ad', 3);
+        }
+        break;
+      case 'crystal':
+        for (let i = 0; i < 5; i++) {
+          const a = i * Math.PI * 2 / 5;
+          shard(Math.cos(a) * r * .78, Math.sin(a) * r * .52, a + Math.PI / 2,
+            r * .52, r * .17, i % 2 ? '#f5d0fe' : c);
+        }
+        break;
+      case 'rift':
+        shard(-r * .72, -r * .58, -.65, r, r * .26, '#f5d0fe');
+        shard(r * .72, -r * .58, .65, r, r * .26, c);
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        for (let i = 0; i < 7; i++) {
+          const y = -r + i * r / 3;
+          const x = Math.sin(t * 7 + i * 2) * r * .18;
+          if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+        break;
+      case 'storm':
+        for (let i = 0; i < 3; i++) {
+          const a = t * (i % 2 ? -1.8 : 1.5) + i * Math.PI * 2 / 3;
+          shard(Math.cos(a) * r, Math.sin(a) * r * .65, a, r * .6, r * .16, i === 1 ? '#fff' : c);
+        }
+        lineMutation(ctx, [[-r, -r * .55], [-r * .25, -r * .12], [-r * .62, r * .05], [r, r * .55]], '#ecfeff', 3);
+        break;
+      case 'brood':
+        for (let i = 0; i < 4; i++) {
+          const y = -r * .55 + i * r * .36;
+          lineMutation(ctx, [[-r * .58, y], [-r * 1.18, y - r * .24]], c, 4);
+          lineMutation(ctx, [[r * .58, y], [r * 1.18, y - r * .24]], c, 4);
+        }
+        for (const x of [-.4, 0, .4]) {
+          ctx.fillStyle = '#f7fee7';
+          ctx.beginPath(); ctx.arc(x * r, -r * .2, r * .12, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+          ctx.fillStyle = '#365314';
+          ctx.beginPath(); ctx.arc(x * r, -r * .2, r * .05, 0, Math.PI * 2); ctx.fill();
+        }
+        break;
+    }
+    ctx.restore();
   }
 
   render(ctx, cam) {
     const sx = this.x - cam.x, sy = this.y - cam.y;
     if (sx < -100 || sy < -100 || sx > cam.vw + 100 || sy > cam.vh + 100) return;
 
-    // Elite aura and bounty readability are drawn before the body.
+    // Mutation field and silhouette alterations are rendered around the body.
     if (this.elite) {
       const pulse = 1 + Math.sin(performance.now() * 0.006 + this._wob) * 0.12;
       ctx.save();
@@ -352,6 +594,7 @@ class Enemy {
       ctx.stroke();
       ctx.restore();
     }
+    this.renderMutationUnderlay(ctx, sx, sy);
 
     // Soft shadow
     const shadowR = this.size * (this.boss ? 0.8 : 0.5);
@@ -363,7 +606,7 @@ class Enemy {
     // Sprite (use the enemy type as the sprite id; bosses use boss_ prefix)
     const sid = this.boss ? 'boss_' + this.id.replace('boss_', '') : this.id;
     if (Sprite.has(sid)) {
-      const scale = this.boss ? 1.0 : 1.6;
+      const scale = this.boss ? 1.0 : 1.6 * (this.mutationScale || 1);
       const sw = Sprite.get(sid).w * scale;
       const sh = Sprite.get(sid).h * scale;
       // Animate: wobble / bob based on time and per-enemy phase
@@ -374,6 +617,13 @@ class Enemy {
       // Flip based on angle for chase enemies (face the player)
       const flipX = this.angle > Math.PI / 2 || this.angle < -Math.PI / 2;
       ctx.save();
+      if (this.elite) {
+        ctx.shadowColor = this.elite.color;
+        ctx.shadowBlur = this.elite.rare ? 24 : 12;
+        ctx.filter = this.elite.rare
+          ? 'saturate(1.8) contrast(1.22) brightness(1.08)'
+          : 'saturate(1.35) contrast(1.1)';
+      }
       if (scale !== 1) {
         // Center-scaled draw
         ctx.translate(ax, ay + sh / 2);
@@ -385,6 +635,7 @@ class Enemy {
         tint: flash ? 'rgba(255,255,255,0.7)' : null
       });
       ctx.restore();
+      this.renderMutationOverlay(ctx, sx, ay + sh / 2);
 
       // Status tints
       if (this.slowAmount > 0) {
@@ -421,9 +672,20 @@ class Enemy {
         ctx.fillStyle = this.elite.color;
         ctx.font = 'bold 9px sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText(this.elite.name, sx, by - 4);
+        ctx.font = this.elite.rare ? '900 11px Impact, sans-serif' : 'bold 9px sans-serif';
+        ctx.strokeStyle = '#02040a';
+        ctx.lineWidth = this.elite.rare ? 4 : 3;
+        const mutationLabel = this.elite.rare ? `— ${this.elite.name} —` : this.elite.name;
+        ctx.strokeText(mutationLabel, sx, by - 4);
+        ctx.fillText(mutationLabel, sx, by - 4);
       }
     }
+  }
+
+  moveWithEnvironment(game, dx, dy) {
+    const radius = this.size * 0.45;
+    if (game.moveActorWithEnvironment) game.moveActorWithEnvironment(this, dx, dy, radius);
+    else { this.x += dx; this.y += dy; }
   }
 }
 
@@ -435,10 +697,29 @@ class Projectile {
     this.hitSet = new Set();
   }
   update(dt, game) {
+    const previousX = this.x;
+    const previousY = this.y;
     this.x += this.vx * dt;
     this.y += this.vy * dt;
     this.life -= dt;
     if (this.life <= 0) { this.dead = true; return; }
+
+    // Trees are solid for projectiles too. Trace the entire movement segment
+    // so fast shots cannot tunnel through a narrow trunk on a low frame rate.
+    const environmentHit = game.traceEnvironmentHit?.(
+      previousX, previousY, this.x, this.y, Math.max(1, this.size || 1)
+    );
+    if (environmentHit) {
+      this.x = environmentHit.x;
+      this.y = environmentHit.y;
+      const impactDamage = this.enemy ? this.dmg * 0.35 : this.dmg;
+      game.damageEnvironmentObject?.(
+        environmentHit.object, impactDamage, this.owner, this.x, this.y
+      );
+      this.dead = true;
+      game.particles.spawnSparkBurst(this.x, this.y, this.enemy ? '#9f1239' : '#c58a51', 5);
+      return;
+    }
 
     // Bounce off world bounds (use camera-relative bounds as proxy)
     if (this.bounce > 0) {
@@ -491,10 +772,12 @@ class Projectile {
             game.particles.spawnRing(e.x, e.y, '#a5f3fc', 42);
             game.particles.spawnSparkBurst(e.x, e.y, '#fb923c', 10);
           }
-          if (this.crit)   game.particles.spawnCrit(this.x, this.y - 12,
-                              Math.floor(this.dmg) + '!');
-          else             game.particles.spawnFloat(this.x, this.y - 12,
-                              Math.floor(this.dmg), '#fff');
+          if (game.settings?.damageNumbers !== false) {
+            if (this.crit) game.particles.spawnCrit(this.x, this.y - 12,
+              Math.floor(this.dmg) + '!');
+            else game.particles.spawnFloat(this.x, this.y - 12,
+              Math.floor(this.dmg), '#fff');
+          }
 
           // Chain lightning
           if (this.chain > 0 && Math.random() < this.chain) {
@@ -507,7 +790,12 @@ class Projectile {
             if (next) {
               game.particles.spawnBurst((e.x + next.x) / 2, (e.y + next.y) / 2,
                 '#7af0ff', 12, 200);
-              Audio.shootBig();
+              Audio.play?.('player.weapon.fire', {
+                x: (e.x + next.x) / 2,
+                y: (e.y + next.y) / 2,
+                weapon: 'lightning',
+                power: this.dmg * 0.5
+              });
               next.takeDamage(this.dmg * 0.5, this.owner, game);
             }
           }

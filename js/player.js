@@ -134,6 +134,12 @@ class Player {
     this.hp -= reduced;
     this.hitFlash = 0.18;
     this.invuln = 0.4;
+    Audio.play?.('player.hurt', {
+      x: sourceX ?? this.x,
+      y: sourceY ?? this.y,
+      power: reduced / Math.max(1, this.maxHpEffective() * 0.16),
+      critical: this.hp / this.maxHpEffective() < 0.3
+    });
     if (this.hp <= 0) {
       // Revive check
       if (s.revive > 0 && this.revivesUsed < s.revive) {
@@ -145,6 +151,7 @@ class Player {
           this.game.particles.spawnBurst(this.x, this.y, '#fbbf24', 30, 200);
           this.game.shake.trigger(4);
         }
+        Audio.play?.('reward.reveal', { rarity: 'legendary', x: this.x, y: this.y });
         return;
       }
       this.hp = 0;
@@ -222,7 +229,7 @@ class Player {
       this.invuln = Math.max(this.invuln, 0.28);
       game.shake.trigger(3);
       game.particles.spawnRing(this.x, this.y, '#67e8f9', 36);
-      Audio.shootBig();
+      Audio.play?.('player.dash', { x: this.x, y: this.y });
     }
     if (Input.justPressed.has('e')) {
       if (!game.director.activateNova()) {
@@ -233,8 +240,10 @@ class Player {
 
     if (this.dashTime > 0) {
       this.dashTime -= dt;
-      this.x += this.dashDir.x * spd * 3.4 * dt;
-      this.y += this.dashDir.y * spd * 3.4 * dt;
+      const dashX = this.dashDir.x * spd * 3.4 * dt;
+      const dashY = this.dashDir.y * spd * 3.4 * dt;
+      if (game.moveActorWithEnvironment) game.moveActorWithEnvironment(this, dashX, dashY, this.r);
+      else { this.x += dashX; this.y += dashY; }
       this.trailTimer -= dt;
       if (this.trailTimer <= 0) {
         this.trailTimer = 0.025;
@@ -244,8 +253,10 @@ class Player {
         });
       }
     } else {
-      this.x += ax.x * spd * dt;
-      this.y += ax.y * spd * dt;
+      const moveX = ax.x * spd * dt;
+      const moveY = ax.y * spd * dt;
+      if (game.moveActorWithEnvironment) game.moveActorWithEnvironment(this, moveX, moveY, this.r);
+      else { this.x += moveX; this.y += moveY; }
     }
     if (ax.x !== 0 || ax.y !== 0) {
       this.facing = Math.atan2(ax.y, ax.x);
@@ -287,44 +298,78 @@ class Player {
         }));
       }
       game.particles.spawnRing(this.x, this.y, '#67e8f9', 80);
+      Audio.play?.('player.weapon.fire', {
+        x: this.x, y: this.y, weapon: 'lightning', power: damage * 0.6, heavy: true
+      });
     }
 
     // Drones
     if (s.drones > 0) {
+      const singularity = game.director.hasSynergy('singularity');
       // Update existing drones
       this.droneTimer = (this.droneTimer || 0) - dt;
       // Ensure we have the right number
       while (this.drones.length < s.drones) {
-        this.drones.push({ angle: Math.random() * Math.PI * 2, fire: 0 });
+        this.drones.push({
+          angle: Math.random() * Math.PI * 2,
+          fire: Math.random() * 0.25,
+          aim: this.facing,
+          recoil: 0,
+          phase: Math.random() * Math.PI * 2
+        });
       }
       while (this.drones.length > s.drones) this.drones.pop();
-      for (const d of this.drones) {
-        d.angle += dt * 2;
+      const droneCount = this.drones.length;
+      for (let i = 0; i < droneCount; i++) {
+        const d = this.drones[i];
+        d.angle += dt * (singularity ? 3.1 : 2);
+        d.recoil = Math.max(0, (d.recoil || 0) - dt);
         d.fire -= dt;
+
+        // Each drone owns a stable world position, so its model and projectiles
+        // originate from the same place instead of appearing around an empty ring.
+        const orbitRadius = 60 + Math.min(18, droneCount * 2);
+        const spread = droneCount > 1 ? i / droneCount * Math.PI * 2 : 0;
+        const orbitAngle = d.angle + spread;
+        const bob = Math.sin(this.animTime * 5 + d.phase) * 3;
+        d.x = this.x + Math.cos(orbitAngle) * orbitRadius;
+        d.y = this.y + Math.sin(orbitAngle) * orbitRadius * 0.72 + bob;
+
         if (d.fire <= 0) {
           // Find nearest enemy
           let target = null, best = Infinity;
           for (const e of game.enemies) {
             if (!e.alive) continue;
-            const dx = e.x - this.x, dy = e.y - this.y;
+            const dx = e.x - d.x, dy = e.y - d.y;
             const d2 = dx * dx + dy * dy;
             if (d2 < best) { best = d2; target = e; }
           }
           if (target) {
-            const a = Math.atan2(target.y - this.y, target.x - this.x);
-            const singularity = game.director.hasSynergy('singularity');
+            const a = Math.atan2(target.y - d.y, target.x - d.x);
+            d.aim = a;
+            d.recoil = 0.14;
             const sp = singularity ? 470 : 380;
+            const muzzleX = d.x + Math.cos(a) * 22;
+            const muzzleY = d.y + Math.sin(a) * 22;
             game.projectiles.push(new Projectile({
-              x: this.x + Math.cos(d.angle) * 60,
-              y: this.y + Math.sin(d.angle) * 60,
+              x: muzzleX,
+              y: muzzleY,
               vx: Math.cos(a) * sp, vy: Math.sin(a) * sp,
               size: singularity ? 9 : 6,
               dmg: s.damage * (1 + s.damageMult) * (singularity ? 0.8 : 0.5),
               pierce: singularity ? 1 : 0, owner: this, source: target,
               kind: singularity ? 'void' : null
             }));
+            game.particles.spawnSparkBurst(
+              muzzleX, muzzleY, singularity ? '#c084fc' : '#67e8f9', singularity ? 5 : 3
+            );
+            Audio.play?.('player.weapon.fire', {
+              x: muzzleX, y: muzzleY, weapon: singularity ? 'nova' : 'drone',
+              power: singularity ? 1.1 : 0.65, heavy: singularity
+            });
             d.fire = singularity ? 0.38 : 0.6;
           } else {
+            d.aim = orbitAngle + Math.PI / 2;
             d.fire = 0.1;
           }
         }
@@ -354,7 +399,12 @@ class Player {
   }
 
   fire(target, s, game) {
-    Audio.shoot();
+    Audio.play?.('player.weapon.fire', {
+      x: this.x,
+      y: this.y,
+      power: s.damage * (1 + s.damageMult),
+      weapon: s.burn > 0 ? 'ember' : (s.area > 0.5 ? 'void' : 'bolt')
+    });
     const baseAngle = Math.atan2(target.y - this.y, target.x - this.x);
     const n = Math.max(1, Math.floor(s.projectiles));
     const spread = n > 1 ? 0.25 : 0;
@@ -399,6 +449,8 @@ class Player {
     const sx = this.x - cam.x;
     const sy = this.y - cam.y;
 
+    this.renderDrones(ctx, cam);
+
     // Soft shadow on the ground
     ctx.fillStyle = 'rgba(0,0,0,0.35)';
     ctx.beginPath();
@@ -437,6 +489,102 @@ class Player {
       ctx.beginPath();
       ctx.arc(sx, sy, this.pickupRadius(), 0, Math.PI * 2);
       ctx.stroke();
+    }
+  }
+
+  renderDrones(ctx, cam) {
+    if (!this.drones.length) return;
+    const singularity = !!this.game?.director?.hasSynergy('singularity');
+    const accent = singularity ? '#c084fc' : '#67e8f9';
+    const spriteId = singularity ? 'combat_drone_void' : 'combat_drone';
+
+    // A faint tactical orbit line makes the companions feel anchored to the hero.
+    ctx.save();
+    ctx.strokeStyle = singularity ? 'rgba(192,132,252,0.18)' : 'rgba(103,232,249,0.13)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([3, 9]);
+    ctx.beginPath();
+    ctx.ellipse(this.x - cam.x, this.y - cam.y, 68, 49, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+
+    for (const d of this.drones) {
+      if (!Number.isFinite(d.x) || !Number.isFinite(d.y)) continue;
+      const x = d.x - cam.x;
+      const y = d.y - cam.y;
+      const aim = Number.isFinite(d.aim) ? d.aim : 0;
+      const pulse = 0.5 + Math.sin(this.animTime * 8 + d.phase) * 0.18;
+
+      // Ground shadow and thruster wash establish height above the arena.
+      ctx.save();
+      ctx.fillStyle = 'rgba(0,0,0,0.3)';
+      ctx.beginPath();
+      ctx.ellipse(x, y + 15, 17, 5, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.fillStyle = singularity
+        ? `rgba(168,85,247,${0.13 + pulse * 0.12})`
+        : `rgba(34,211,238,${0.11 + pulse * 0.1})`;
+      ctx.beginPath();
+      ctx.ellipse(x - Math.cos(aim) * 10, y - Math.sin(aim) * 10 + 8, 15, 7, aim, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+
+      // Void-charged drones get a rotating containment ring.
+      if (singularity) {
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.rotate(-this.animTime * 3 + d.phase);
+        ctx.strokeStyle = 'rgba(216,180,254,0.72)';
+        ctx.lineWidth = 1.5;
+        ctx.shadowColor = accent;
+        ctx.shadowBlur = 10;
+        ctx.beginPath();
+        ctx.ellipse(0, 0, 25, 11, 0, 0.35, Math.PI * 1.55);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // Twin rotor arcs remain animated independently of the aiming chassis.
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(aim);
+      ctx.strokeStyle = `rgba(226,232,240,${0.32 + pulse * 0.28})`;
+      ctx.lineWidth = 2;
+      ctx.lineCap = 'round';
+      const rotorSpin = this.animTime * 17 + d.phase;
+      for (const side of [-1, 1]) {
+        ctx.beginPath();
+        ctx.arc(0, side * 17, 7, rotorSpin, rotorSpin + Math.PI * 0.78);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(0, side * 17, 7, rotorSpin + Math.PI, rotorSpin + Math.PI * 1.78);
+        ctx.stroke();
+      }
+
+      const recoilOffset = d.recoil > 0 ? -Math.sin(d.recoil / 0.14 * Math.PI) * 4 : 0;
+      ctx.translate(recoilOffset, 0);
+      ctx.shadowColor = accent;
+      ctx.shadowBlur = singularity ? 18 : 11;
+      const sprite = Sprite.get(spriteId);
+      if (sprite) ctx.drawImage(sprite.image, -sprite.w / 2, -sprite.h / 2);
+
+      // A very short-lived muzzle bloom makes every autonomous shot readable.
+      if (d.recoil > 0) {
+        const bloom = d.recoil / 0.14;
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.fillStyle = singularity
+          ? `rgba(233,213,255,${bloom})`
+          : `rgba(207,250,254,${bloom})`;
+        ctx.beginPath();
+        ctx.moveTo(21, 0);
+        ctx.lineTo(29 + bloom * 7, -5 * bloom);
+        ctx.lineTo(27 + bloom * 10, 0);
+        ctx.lineTo(29 + bloom * 7, 5 * bloom);
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.restore();
     }
   }
 }

@@ -8,6 +8,21 @@ Thumbs.db
 .vscode/
 .idea/
 
+# Local Codex/session metadata
+.omo/
+.codegraph/
+
+# Local environment files and credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+credentials.json
+secrets.json
+
 # Build outputs (none currently, but safe)
 dist/
 build/
