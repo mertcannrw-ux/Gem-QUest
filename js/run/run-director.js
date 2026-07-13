@@ -12,24 +12,26 @@ class RunDirector {
 
   reset() {
     this.combo = 0;
+    this.comboBest = 0;
     this.comboTimer = 0;
     this.activeEvent = null;
-    this.eventTimer = 18 + Math.random() * 10;
+    this.eventTimer = 18;
     this.eventDuration = 0;
+    this.eventMaxDuration = 0;
     this.eventElapsed = 0;
     this.eventPulse = 0;
-    this.eventSeed = Math.random() * 1000;
+    this.eventSeed = 0;
     this.banner = null;
     this.bannerTime = 0;
     this.flash = 0;
-    this.flashColor = '#ffffff';
-    this.overdrive = 0;
+    this.flashColor = '#7af0ff';
+    this.overdrive = 20;
     this.riftNodes = [];
     this.riftTeleports = 0;
     this.riftTeleportCooldown = 0;
     this.eventCrystals = [];
     this.gemStormCollected = 0;
-    this.gemStormGoal = 12;
+    this.gemStormGoal = 6;
     this.eventStrikes = [];
     this.starfallAttuned = 0;
     this.sanctuaryWells = [];
@@ -39,9 +41,9 @@ class RunDirector {
     this.eventPortals = [];
     this.riftBolts = [];
     this.bounty = null;
-    this.bountyTimer = 22 + Math.random() * 8;
-    this.activeSynergies = null;
-    this.synergyHudGlow = 0;
+    this.bountyTimer = 12;
+    this.synergies = [];
+    this._synergyKey = '';
   }
 
   update(dt) {
@@ -122,55 +124,52 @@ class RunDirector {
   }
 
   startRandomEvent() {
-    const choices = ['frenzy', 'gemstorm', 'meteor', 'sanctuary'];
-    const id = choices[Math.floor(Math.random() * choices.length)];
-    this.activeEvent = { id, name: '' };
-    this.eventDuration = 30;
+    const events = [
+      {
+        id: 'gemstorm', name: 'GEM STORM', color: '#67e8f9', duration: 12,
+        description: 'Collect storm crystals to unleash prismatic chain lightning'
+      },
+      {
+        id: 'frenzy', name: 'RIFT FRENZY', color: '#fb7185', duration: 13,
+        description: 'Enter a rift to blink across the arena and unleash chain lightning'
+      },
+      {
+        id: 'meteor', name: 'STARFALL', color: '#fb923c', duration: 12,
+        description: 'Enter warning circles to attune the stars before impact'
+      },
+      {
+        id: 'sanctuary', name: 'LUMINOUS TIDE', color: '#86efac', duration: 13,
+        description: 'Awaken every celestial well to trigger Luminous Ascension'
+      }
+    ];
+    this.activeEvent = events[Math.floor(Math.random() * events.length)];
+    this.eventDuration = this.activeEvent.duration;
+    this.eventMaxDuration = this.activeEvent.duration;
     this.eventElapsed = 0;
     this.eventPulse = 0;
     this.eventSeed = Math.random() * 1000;
-    this.bounty = null;
-
-    if (id === 'frenzy') {
-      this.activeEvent.name = 'RIFT FRENZY';
-      this.createRiftNetwork();
-      this.showBanner('RIFT FRENZY', 'Glide through rifts to carve a path', '#e879f9', 2.2);
-      this.flashScreen('#e879f9', 0.25);
-      Audio.eventStart?.();
-    } else if (id === 'gemstorm') {
-      this.activeEvent.name = 'GEM STORM';
-      this.gemStormCollected = 0;
-      this.eventTimer = 0;
-      this.showBanner('GEM STORM', 'Collect 12 prism crystals', '#67e8f9', 2.2);
-      this.flashScreen('#67e8f9', 0.25);
-      Audio.eventStart?.();
-    } else if (id === 'meteor') {
-      this.activeEvent.name = 'STARFALL';
-      this.starfallAttuned = 0;
-      this.showBanner('STARFALL', 'Stand in the rings to attune the stars', '#fb923c', 2.2);
-      this.flashScreen('#fb923c', 0.25);
-      Audio.eventStart?.();
-    } else if (id === 'sanctuary') {
-      this.activeEvent.name = 'LUMINOUS TIDE';
-      this.sanctuaryCompleted = 0;
-      this.sanctuaryAscended = false;
-      this.createSanctuaryWells();
-      this.showBanner('LUMINOUS TIDE', 'Purify all three wells', '#86efac', 2.2);
-      this.flashScreen('#86efac', 0.25);
-      Audio.eventStart?.();
+    this.eventPortals.length = 0;
+    this.eventStrikes.length = 0;
+    this.eventCrystals.length = 0;
+    this.riftNodes.length = 0;
+    this.riftBolts.length = 0;
+    this.riftTeleportCooldown = 0;
+    this.riftTeleports = 0;
+    this.gemStormCollected = 0;
+    this.starfallAttuned = 0;
+    this.sanctuaryWells.length = 0;
+    this.sanctuaryCompleted = 0;
+    this.sanctuaryPulseTimer = 0;
+    this.sanctuaryAscended = false;
+    if (this.activeEvent.id === 'frenzy') this.createRiftNetwork();
+    if (this.activeEvent.id === 'gemstorm') {
+      for (let i = 0; i < 4; i++) this.spawnStormCrystal();
     }
-
-    for (let i = 0; i < 16; i++) {
-      this.game.particles.spawnSparkBurst(
-        this.game.player.x + Utils.range(-160, 160),
-        this.game.player.y + Utils.range(-120, 120),
-        this.activeEvent.id === 'meteor' ? '#fb923c'
-          : this.activeEvent.id === 'sanctuary' ? '#86efac'
-          : this.activeEvent.id === 'gemstorm' ? '#67e8f9' : '#e879f9',
-        Utils.rangeInt(1, 2)
-      );
-    }
-    this.game.shake.trigger(6);
+    if (this.activeEvent.id === 'sanctuary') this.createSanctuaryWells();
+    this.showBanner('WORLD EVENT', this.activeEvent.name, this.activeEvent.color, 3);
+    this.flashScreen(this.activeEvent.color, 0.28);
+    Audio.worldEvent?.(this.activeEvent.id);
+    this.game.shake.trigger(this.activeEvent.id === 'frenzy' ? 7 : 4);
   }
 
   renderBackdrop(ctx, cam) {

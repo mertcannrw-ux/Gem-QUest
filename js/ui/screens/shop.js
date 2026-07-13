@@ -6,7 +6,7 @@
  * directly (the purchase goes through the Game).
  */
 (function () {
-  const { text, button, drawCoinIcon, forgePath, drawForgeIcon, forgeTheme,
+  const { text, button, pointInRect, drawCoinIcon, forgePath, drawForgeIcon, forgeTheme,
           upgradeValue, logicalWidth, logicalHeight } = UICore;
 
   function drawShop(ctx, game) {

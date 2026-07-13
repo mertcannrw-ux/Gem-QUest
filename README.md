@@ -83,7 +83,8 @@ Gem-Quest/
 │   ├── run/                run-director + combo/bounty/synergies/event-common + events/*
 │   ├── ui/                 ui-core + screens/* (UI facade over focused screens)
 │   └── world/              terrain/world/menu renderers + environment system/renderer
-└── HANDOFF.md              Detailed handoff document (authoritative refactor status)
+├── PRODUCTION.md           Production verification and release checklist
+└── plan.md                 Active architecture and refactor roadmap
 ```
 
 `Game` primarily wires services and state handlers; `UI`, `Audio`, `Sprite`,

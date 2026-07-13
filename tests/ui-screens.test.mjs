@@ -149,3 +149,15 @@ test('main-menu registers click targets for controls and unlocked stages', () =>
     if (UI.buttons.length < 8) throw new Error('too few buttons: ' + UI.buttons.length);
   `, ctx));
 });
+
+test('shop hover rendering uses the shared hit-test helper without a legacy global', () => {
+  const ctx = makeContext();
+  assert.doesNotThrow(() => vm.runInContext(`
+    const g = __makeGame();
+    const c = __makeCtx();
+    c._hover = true;
+    c._mouse = { x: 170, y: 170 };
+    UI.clearButtons();
+    UI.drawShop(c, g);
+  `, ctx));
+});

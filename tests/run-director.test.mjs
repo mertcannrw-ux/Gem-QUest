@@ -40,6 +40,144 @@ test('director loads as a single class with every method on the prototype', () =
   assert.equal(result, true, 'every expected RunDirector method should exist on the prototype');
 });
 
+test('director preserves the pre-refactor fresh-run defaults', () => {
+  const ctx = loadScripts(ROOT);
+  const result = vm.runInContext(`(function(){
+    const game = {
+      player: { items: {} },
+      enemies: [],
+      stage: { bossSpawned: false },
+      settings: { eventIntensity: 1 },
+      particles: {},
+      shake: {}
+    };
+    const director = new RunDirector(game);
+    return {
+      comboBest: director.comboBest,
+      overdrive: director.overdrive,
+      eventTimer: director.eventTimer,
+      eventMaxDuration: director.eventMaxDuration,
+      eventSeed: director.eventSeed,
+      gemStormGoal: director.gemStormGoal,
+      flashColor: director.flashColor,
+      bountyTimer: director.bountyTimer,
+      synergies: director.synergies,
+      synergyKey: director._synergyKey
+    };
+  })()`, ctx);
+
+  assert.equal(result.comboBest, 0);
+  assert.equal(result.overdrive, 20);
+  assert.equal(result.eventTimer, 18);
+  assert.equal(result.eventMaxDuration, 0);
+  assert.equal(result.eventSeed, 0);
+  assert.equal(result.gemStormGoal, 6);
+  assert.equal(result.flashColor, '#7af0ff');
+  assert.equal(result.bountyTimer, 12);
+  assert.deepEqual([...result.synergies], []);
+  assert.equal(result.synergyKey, '');
+});
+
+test('director can update and record its first kill immediately after construction', () => {
+  const ctx = loadScripts(ROOT);
+  const result = vm.runInContext(`(function(){
+    const game = {
+      player: { items: {} },
+      enemies: [],
+      stage: { bossSpawned: false },
+      settings: { eventIntensity: 1 },
+      particles: {},
+      shake: {}
+    };
+    const director = new RunDirector(game);
+    let updateError = null;
+    try {
+      director.update(1 / 60);
+    } catch (error) {
+      updateError = String(error && error.stack || error);
+    }
+    director.onEnemyKilled({ boss: false, elite: false }, null);
+    return {
+      updateError,
+      combo: director.combo,
+      comboBest: director.comboBest,
+      finiteBest: Number.isFinite(director.comboBest)
+    };
+  })()`, ctx);
+
+  assert.equal(result.updateError, null);
+  assert.equal(result.combo, 1);
+  assert.equal(result.comboBest, 1);
+  assert.equal(result.finiteBest, true);
+});
+
+test('starting a world event preserves timing, setup, and audio behavior', () => {
+  const ctx = loadScripts(ROOT);
+  const result = vm.runInContext(`(function(){
+    Math.random = () => 0;
+    const audioCalls = [];
+    globalThis.Audio = { worldEvent(id) { audioCalls.push(id); } };
+    const game = {
+      time: 0,
+      player: { x: 100, y: 100, alive: true, items: {} },
+      enemies: [],
+      stage: { bossSpawned: false },
+      settings: { eventIntensity: 1 },
+      particles: { spawnRing() {} },
+      shake: { trigger(value) { this.value = value; } }
+    };
+    const director = new RunDirector(game);
+    director.eventPortals.push({});
+    director.eventStrikes.push({});
+    director.eventCrystals.push({});
+    director.riftNodes.push({});
+    director.riftBolts.push({});
+    director.startRandomEvent();
+    return {
+      event: director.activeEvent,
+      duration: director.eventDuration,
+      maxDuration: director.eventMaxDuration,
+      crystals: director.eventCrystals.length,
+      portals: director.eventPortals.length,
+      strikes: director.eventStrikes.length,
+      rifts: director.riftNodes.length,
+      bolts: director.riftBolts.length,
+      banner: director.banner,
+      bannerTime: director.bannerTime,
+      flash: director.flash,
+      audioCalls,
+      shake: game.shake.value
+    };
+  })()`, ctx);
+
+  assert.deepEqual(
+    { ...result.event },
+    {
+      id: 'gemstorm',
+      name: 'GEM STORM',
+      color: '#67e8f9',
+      duration: 12,
+      description: 'Collect storm crystals to unleash prismatic chain lightning'
+    }
+  );
+  assert.equal(result.duration, 12);
+  assert.equal(result.maxDuration, 12);
+  assert.equal(result.crystals, 4);
+  assert.equal(result.portals, 0);
+  assert.equal(result.strikes, 0);
+  assert.equal(result.rifts, 0);
+  assert.equal(result.bolts, 0);
+  assert.deepEqual({ ...result.banner }, {
+    kicker: 'WORLD EVENT',
+    title: 'GEM STORM',
+    color: '#67e8f9'
+  });
+  assert.equal(result.bannerTime, 3);
+  assert.equal(result.flash, 0.28);
+  assert.deepEqual([...result.audioCalls], ['gemstorm']);
+  assert.equal(result.shake, 4);
+});
+
 test('every world event can be simulated and rendered without throwing', () => {
   const ctx = loadScripts(ROOT);
   vm.runInContext(`globalThis.Audio = new Proxy(function(){}, { get: () => () => {}, apply: () => {} });`, ctx);

@@ -226,7 +226,7 @@ test('starting a new run defensively initializes persistent environment containe
 });
 
 test('enemy rendering never depends on the gameplay update context', () => {
-  const source = readFileSync(resolve(root, 'js/enemies.js'), 'utf8');
+  const source = readFileSync(resolve(root, 'js/combat/enemy.js'), 'utf8');
   const renderStart = source.indexOf('  render(ctx, cam)');
   const renderEnd = source.indexOf('  moveWithEnvironment(game, dx, dy)', renderStart);
   assert.ok(renderStart >= 0 && renderEnd > renderStart);
@@ -915,6 +915,8 @@ test('stage completion stops director and pickup updates in its transition frame
       globalThis.pickupUpdates = 0;
       let directorUpdates = 0;
       let particleUpdates = 0;
+      let environmentEnsures = 0;
+      let environmentUpdates = 0;
       const game = Object.create(Game.prototype);
       Object.assign(game, {
         state: 'playing',
@@ -928,19 +930,26 @@ test('stage completion stops director and pickup updates in its transition frame
         enemies: [], projectiles: [], enemyProjectiles: [], lootboxes: [],
         particles: { update() { particleUpdates++; } },
         director: { update() { directorUpdates++; } },
-        ensureEnvironmentAround() {},
-        updateEnvironment() {},
+        _environment: {
+          ensureEnvironmentAround() { environmentEnsures++; },
+          updateEnvironment() { environmentUpdates++; }
+        },
         syncMetaFromPlayer() {},
         persistMeta() { return Promise.resolve(); }
       });
       game.update(0.1);
-      return { state: game.state, directorUpdates, pickupUpdates, particleUpdates };
+      return {
+        state: game.state, directorUpdates, pickupUpdates, particleUpdates,
+        environmentEnsures, environmentUpdates
+      };
     })()
   `, ctx);
   assert.equal(result.state, 'stagecomplete');
   assert.equal(result.directorUpdates, 0);
   assert.equal(result.pickupUpdates, 0);
   assert.equal(result.particleUpdates, 1);
+  assert.equal(result.environmentEnsures, 2);
+  assert.equal(result.environmentUpdates, 1);
 });
 
 test('a fatal game-loop error stops further animation frames', () => {

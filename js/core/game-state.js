@@ -78,7 +78,7 @@ const GAME_STATE_HANDLERS = {
   [GAME_STATE.PLAYING]: {
     update(game, dt) {
       const stageDef = STAGES[game.stage.index];
-      game.ensureEnvironmentAround(stageDef, game.player.x, game.player.y, 2);
+      game.environment.ensureEnvironmentAround(stageDef, game.player.x, game.player.y, 2);
       game.environment.updateEnvironment(dt);
       game.player.update(dt, game);
       const tx = game.player.x - game.vw / 2;
