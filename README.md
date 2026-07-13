@@ -175,6 +175,76 @@ For new content (items, enemies, stages, bosses), add entries in the focused
 catalogs under `js/content/` — `items.js`, `enemies.js`, `stages.js`,
 `shop.js`, and `lootboxes.js` — and the engine picks them up automatically.
 
+## 🏗 Architecture
+
+The codebase follows a layered architecture (7 layers, each depending only on
+lower-numbered layers):
+
+| Layer | Directory | Responsibility |
+|-------|-----------|----------------|
+| 1 | `js/core/`, `js/utils.js` | Pure helpers, constants, game-state, RNG |
+| 2 | `js/content/`, `js/platform/save-schema.js` | Data catalogs, save schema |
+| 3 | `js/platform/`, `js/sdk.js` | Persistence, settings, SDK adapter |
+| 4 | `js/game/`, `js/player.js`, `js/input.js` | Game loop, viewport, world session |
+| 5 | `js/combat/`, `js/run/`, `js/world/` | Simulation, enemies, events, environment |
+| 6 | `js/render/`, `js/audio/`, `js/ui/` | Rendering, audio, UI screens |
+| 7 | `js/game.js`, `js/main.js` | Application orchestration, bootstrap |
+
+Each subsystem receives narrow contexts (combat, run, render, UI) instead of
+the full mutable Game object. Renderers receive read-only models; UI screens
+receive view models + action callbacks.
+
+### Module system
+
+- Runtime files use classic scripts with ES module exports (transitional).
+- The test harness (`tests/helpers/load-classic-scripts.mjs`) strips `export`
+  statements before VM execution for backward compat.
+- After full ESM migration, the HTML will load a single `<script type="module">`.
+
+## 🧪 Testing
+
+| Layer | Tool | Command |
+|-------|------|---------|
+| Unit | `node --test` | `npm test` |
+| Integration | `node --test` | `npm test` |
+| Architecture | `node --test` | `npm test` |
+| Browser E2E | Playwright | `npm run test:e2e` |
+| Coverage | c8 | `npm run test:coverage` |
+
+### Test layout
+
+```
+tests/
+  unit/            # Pure function / individual service tests
+  integration/     # Game/subsystem wiring tests
+  e2e/             # Playwright browser journey tests
+  helpers/         # VM script-loading harness
+```
+
+### Coverage thresholds (final target)
+- Lines: 90%
+- Functions: 90%
+- Branches: 85%
+- Statements: 90%
+
+## 🔧 Development
+
+```bash
+# Serve locally
+npm start
+
+# Run all checks (syntax, architecture, types)
+npm run check
+npm run typecheck
+
+# Run tests
+npm test
+npm run test:e2e
+
+# Full verification (checks + types + tests + build)
+npm run verify
+```
+
 ## 📜 License
 
 MIT — do whatever you want, just don't blame us if a slime kills your run.
@@ -186,13 +256,16 @@ MIT — do whatever you want, just don't blame us if a slime kills your run.
   by `serve.js`.
 - The official CrazyGames HTML5 SDK v3 URL and APIs are used.
 - Rewarded rewards are granted only after the SDK reports `adFinished`.
+- Test-only files (`test-adapter.js`) are excluded from the production build.
+- Test adapters (`__gemQuestTest`, `__gemQuestDebug`) are never available on
+  non-local hosts.
 - For release, host the static files on CrazyGames or behind a maintained HTTPS
   CDN; `serve.js` is intentionally a small local preview server.
 
 ## 🎮 Made With
 
-- Vanilla JavaScript (ES2020+)
+- Vanilla JavaScript (ES2020+) with checked JSDoc type safety
 - HTML5 Canvas 2D
-- Web Audio API
-- A lot of `fillRect()` calls
+- Web Audio API (procedural audio, no audio files)
+- Procedural pixel-art rendering (no external sprite sheets)
 - AI-generated art via [Pollinations.ai](https://pollinations.ai/) (Flux model)

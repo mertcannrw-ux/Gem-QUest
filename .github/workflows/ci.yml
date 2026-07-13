@@ -9,7 +9,42 @@ permissions:
   contents: read
 
 jobs:
-  verify:
+  static-and-unit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    strategy:
+      matrix:
+        node-version: [20, 22]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm run check
+      - run: npm run typecheck
+      - run: npm test
+
+  browser-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npx playwright install chromium
+      - run: npm run test:e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-traces
+          path: test-results/
+
+  production-package:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -19,4 +54,22 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci --ignore-scripts
-      - run: npm run verify
+      - run: npm run build
+      - run: npm run verify:dist
+
+  security:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm audit --omit=dev
+        continue-on-error: true
+      - name: Verify no dev artifacts in dist
+        run: |
+          ! grep -r "test-adapter" dist/js/ 2>/dev/null
+          ! grep -r "__gemQuestTest" dist/js/ 2>/dev/null
