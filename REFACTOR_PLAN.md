@@ -1164,6 +1164,14 @@ js/audio/audio.js
 
 ## 20. Phase 13 — Split Sprite Cache from Sprite Catalogs
 
+> **Status: ✅ COMPLETE** (committed in this session). `js/sprites.js` split into
+> `js/render/sprite.js` (shared `PAL`/cache/helpers + `Sprite` facade) and six
+> `js/render/catalogs/*.js` files. `buildAll` calls `registerXxxSprites()` in the
+> original order; sprite-building function bodies were moved verbatim, so generated
+> pixels/checksums are unchanged. Old `js/sprites.js` removed. `ItemArt` kept
+> separate. `tests/sprite.test.mjs` added; `game.test.mjs` source-scan now reads
+> the split files.
+
 ### Goal
 
 Reduce `sprites.js` without changing any generated pixels.

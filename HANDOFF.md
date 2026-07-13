@@ -1,8 +1,8 @@
 # Gem Quest Refactor — Agent Handoff
 
-> Last updated: **2026-07-13** · based on commit **`28d6ba1`** (branch `codex/major-refactor`)
+> Last updated: **2026-07-13** · based on commit **`05ce913`** (branch `codex/major-refactor`)
 > Authoritative plan: **`REFACTOR_PLAN.md`** (read it before doing any phase).
-> Status: **119 tests green · `npm run verify` green · 15 of 17 plan phases done (one extra).**
+> Status: **122 tests green · `npm run verify` green · 16 of 17 plan phases done (one extra).**
 
 ---
 
@@ -12,7 +12,7 @@ We are mid-way through the behavior-preserving refactor of `js/game.js` (and a f
 other large files) into focused subsystems, per `REFACTOR_PLAN.md`. Every phase so
 far is committed, runs, and keeps `npm run verify` green.
 
-- **You can keep going with the next concrete step: start plan Phase 13** — split the sprite cache from the sprite catalogs into `js/render/sprite.js` + `js/render/catalogs/*`. See `REFACTOR_PLAN.md` Phase 13.
+- **You can keep going with the next concrete step: start plan Phase 14** — split content data into focused catalogs (`js/content/{items,enemies,stages,shop,lootboxes}.js`). See `REFACTOR_PLAN.md` Phase 14.
 - **Golden rule:** small move-and-delegate edits, keep tests green, one phase per
   commit. Never change gameplay/balance/art/visuals. No ES modules (classic
   `<script>` + shared globals only).
@@ -65,7 +65,6 @@ Phase 6 is done and `WorldRenderer`/`MenuBackgroundRenderer` are now extracted t
 
 ```
 js/
-  audio.js
   audio/
     audio-context.js                 ← new (shared engine state + context/master + vol/mute/intensity)
     mixer.js                         ← new (synthesis + buses + spatial + voice budget)
@@ -73,6 +72,15 @@ js/
     ambience.js                      ← new (stage ambience)
     sfx.js                           ← new (contextual SFX + play)
     audio.js                         ← new (sync orchestrator + Audio facade)
+  render/
+    sprite.js                        ← new (Phase 13: shared palette/cache/helpers + Sprite facade)
+    catalogs/
+      player-sprites.js             ← new (Phase 13)
+      enemy-sprites.js              ← new (Phase 13)
+      item-sprites.js               ← new (Phase 13)
+      projectile-sprites.js         ← new (Phase 13)
+      tile-sprites.js               ← new (Phase 13)
+      prop-sprites.js               ← new (Phase 13)
   combat/combat-coordinator.js        ← new (Phase extra)
   core/
     constants.js                      ← new
@@ -260,14 +268,13 @@ planned extraction:
 
 ---
 
-## 6. Next concrete step — start plan Phase 13 (sprite cache split)
+## 6. Next concrete step — start plan Phase 14 (content data split)
 
-Split the sprite cache from the sprite catalogs per `REFACTOR_PLAN.md` Phase 13:
-`js/render/sprite.js` + `js/render/catalogs/{player,enemy,item,projectile,tile,prop}-sprites.js`.
-Add a pixel-checksum test first, then move one catalog at a time and compare all
-checksums. Keep `Sprite.buildAll()` as the public entry point; keep `ItemArt` separate.
-Preserve every sprite ID, dimension, opaque bound, and pixel checksum. One file per
-commit, `npm run verify` green.
+Split the mixed `data.js` into focused content catalogs per `REFACTOR_PLAN.md`
+Phase 14: `js/content/{items,enemies,stages,shop,lootboxes}.js`. Preserve every
+ID, the array order, and the exported globals (`ITEMS`, `ENEMIES`, `STAGES`,
+`SHOP_UPGRADES`, `LOOTBOX`, `RARITY`, `pickItemRewards`, `xpToLevel`). Do not
+rename or renumber. One file per commit, `npm run verify` green.
 
 ---
 
@@ -281,7 +288,7 @@ commit, `npm run verify` green.
 | 10 | Enemy / boss / mutation / projectile | `js/combat/{enemy,enemy-ai,boss-ai,mutations,projectile}.js` | ✅ DONE. `Projectile`→projectile.js; `Enemy` entity in enemy.js (update dispatches to prototype methods); enemy-ai.js (shoot + rare mutation), boss-ai.js (boss patterns + `BOSS_AI` map), mutations.js (`applyEliteModifier`). `tests/projectile.test.mjs` added. |
 | 11 | Player combat + drones | `js/combat/{player-combat,drone-system}.js` | ✅ DONE. `Player.update` delegates to `autoAttack` (player-combat.js) and `updateDrones` (drone-system.js); progression/state/movement/damage stay on `Player`. `tests/player-combat.test.mjs` added. |
 | 12 | Audio facade split | `js/audio/{audio-context,mixer,music,ambience,sfx,audio}.js` | ✅ DONE (this commit). Shared engine state hoisted to module globals in `audio-context.js`; verbs moved verbatim; `Audio` facade public surface unchanged; `Audio.sync(game)` builds a scene description. Old `js/audio.js` removed. `tests/audio.test.mjs` added. |
-| 13 | Sprite cache ↔ catalogs | `js/render/sprite.js`, `js/render/catalogs/*` | Add pixel-checksum test first; move one catalog at a time; compare all checksums. Keep `Sprite.buildAll()`. Keep `ItemArt` separate. |
+| 13 | Sprite cache ↔ catalogs | `js/render/sprite.js`, `js/render/catalogs/*` | ✅ DONE (this commit). `sprites.js` split into `render/sprite.js` (shared `PAL`/cache/helpers + `Sprite` facade) and six catalogs; `buildAll` calls `registerXxxSprites()` in the original order. Bodies moved verbatim, so generated pixels/checksums are unchanged. Old `js/sprites.js` removed. `tests/sprite.test.mjs` added. |
 | 14 | Content data split | `js/content/{items,enemies,stages,shop,lootboxes,index}.js` | Keep IDs + array order + globals (`ITEMS`, `ENEMIES`, `STAGES`, `SHOP_UPGRADES`, `LOOTBOX`, `RARITY`, `pickItemRewards`, `xpToLevel`). Do not rename/renumber. |
 | 15 | Narrow runtime deps | (refactor only) | Introduce small context objects where they reduce coupling. Remove compatibility getters only after `rg` proves no caller. No global event bus. |
 | 16 | Build checks + docs | update `scripts/check.mjs`, `index.html`, `README.md`, this file | Scan nested JS dirs; validate script refs; fix the stale "bad frame is logged and loop continues" claim (current behavior is **fatal → stop**). |

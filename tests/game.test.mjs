@@ -33,7 +33,13 @@ test('opening tutorial is drawn in the top center and avoids the action deck', (
 test('every gameplay item has matching high-resolution relic art', () => {
   const ctx = loadScripts([
     'js/utils.js', 'js/core/random.js',
-    'js/sprites.js',
+    'js/render/sprite.js',
+    'js/render/catalogs/player-sprites.js',
+    'js/render/catalogs/enemy-sprites.js',
+    'js/render/catalogs/item-sprites.js',
+    'js/render/catalogs/projectile-sprites.js',
+    'js/render/catalogs/tile-sprites.js',
+    'js/render/catalogs/prop-sprites.js',
     'js/item-art.js',
     'js/data.js'
   ]);
@@ -73,7 +79,16 @@ test('audio exposes contextual events and player-controlled mix/accessibility se
 });
 
 test('environment rendering includes a bottom-anchored forest prop family and terrain variants', () => {
-  const source = readFileSync(resolve(root, 'js/sprites.js'), 'utf8');
+  const spriteFiles = [
+    'js/render/sprite.js',
+    'js/render/catalogs/player-sprites.js',
+    'js/render/catalogs/enemy-sprites.js',
+    'js/render/catalogs/item-sprites.js',
+    'js/render/catalogs/projectile-sprites.js',
+    'js/render/catalogs/tile-sprites.js',
+    'js/render/catalogs/prop-sprites.js'
+  ];
+  const source = spriteFiles.map((f) => readFileSync(resolve(root, f), 'utf8')).join('\n');
   const renderer = readFileSync(resolve(root, 'js/game.js'), 'utf8');
   const worldRenderer = readFileSync(resolve(root, 'js/world/world-renderer.js'), 'utf8');
   const envSystem = readFileSync(resolve(root, 'js/world/environment-system.js'), 'utf8');
