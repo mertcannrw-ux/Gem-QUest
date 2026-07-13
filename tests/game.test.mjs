@@ -3,34 +3,9 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import test from 'node:test';
 import vm from 'node:vm';
+import { loadScripts } from './helpers/load-classic-scripts.mjs';
 
 const root = resolve(import.meta.dirname, '..');
-
-function loadScripts(names, additions = {}) {
-  const context = vm.createContext({
-    console,
-    Math,
-    Object,
-    Array,
-    Set,
-    Map,
-    Number,
-    String,
-    Boolean,
-    JSON,
-    Promise,
-    setTimeout,
-    clearTimeout,
-    ...additions
-  });
-  context.globalThis = context;
-  context.window = context.window || context;
-  for (const name of names) {
-    const source = readFileSync(resolve(root, name), 'utf8');
-    vm.runInContext(source, context, { filename: name });
-  }
-  return context;
-}
 
 test('item rewards are unique and never include maxed items', () => {
   const ctx = loadScripts(['js/utils.js', 'js/data.js']);
