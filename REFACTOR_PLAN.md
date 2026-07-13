@@ -1230,6 +1230,13 @@ The registry exposes only the builder helpers required by catalogs.
 
 ## 21. Phase 14 — Split Content Data
 
+> **Status: ✅ COMPLETE** (committed in this session). `js/data.js` split verbatim
+> into `js/content/{items,enemies,stages,shop,lootboxes}.js`. All IDs, array order,
+> and globals (`ITEMS`, `ENEMIES`, `STAGES`, `SHOP_UPGRADES`, `LOOTBOX`, `RARITY`,
+> `pickItemRewards`, `xpToLevel`) are preserved; a value-level diff against the
+> original `data.js` is identical. Old `js/data.js` removed. `tests/content.test.mjs`
+> added; 12 tests that loaded `js/data.js` now load the split catalogs.
+
 ### Goal
 
 Replace the mixed `data.js` file with focused content catalogs while preserving

@@ -1,8 +1,8 @@
 # Gem Quest Refactor — Agent Handoff
 
-> Last updated: **2026-07-13** · based on commit **`05ce913`** (branch `codex/major-refactor`)
+> Last updated: **2026-07-13** · based on commit **`c228125`** (branch `codex/major-refactor`)
 > Authoritative plan: **`REFACTOR_PLAN.md`** (read it before doing any phase).
-> Status: **122 tests green · `npm run verify` green · 16 of 17 plan phases done (one extra).**
+> Status: **126 tests green · `npm run verify` green · 14 of 17 plan phases done (one extra).**
 
 ---
 
@@ -12,7 +12,7 @@ We are mid-way through the behavior-preserving refactor of `js/game.js` (and a f
 other large files) into focused subsystems, per `REFACTOR_PLAN.md`. Every phase so
 far is committed, runs, and keeps `npm run verify` green.
 
-- **You can keep going with the next concrete step: start plan Phase 14** — split content data into focused catalogs (`js/content/{items,enemies,stages,shop,lootboxes}.js`). See `REFACTOR_PLAN.md` Phase 14.
+- **You can keep going with the next concrete step: start plan Phase 15** — narrow runtime dependencies (introduce small context objects; remove compatibility getters only after `rg` proves no caller; no global event bus). See `REFACTOR_PLAN.md` Phase 15.
 - **Golden rule:** small move-and-delegate edits, keep tests green, one phase per
   commit. Never change gameplay/balance/art/visuals. No ES modules (classic
   `<script>` + shared globals only).
@@ -87,7 +87,12 @@ js/
     game-state.js                     ← new
     lifecycle.js                      ← new
     random.js                         ← new (shared rng + hash)
-  data.js
+  content/                             ← new (Phase 14)
+    items.js                         ← new (RARITY, ITEMS, ITEM_BY_ID, pickItemRewards, xpToLevel)
+    enemies.js                       ← new (ENEMIES)
+    stages.js                        ← new (STAGES)
+    shop.js                          ← new (SHOP_UPGRADES)
+    lootboxes.js                     ← new (LOOTBOX)
   combat/                             ← new (Phase 10/11)
     projectile.js                    ← new (Projectile)
     enemy.js                        ← new (Enemy entity/lifecycle/render)
@@ -268,13 +273,12 @@ planned extraction:
 
 ---
 
-## 6. Next concrete step — start plan Phase 14 (content data split)
+## 6. Next concrete step — start plan Phase 15 (narrow runtime deps)
 
-Split the mixed `data.js` into focused content catalogs per `REFACTOR_PLAN.md`
-Phase 14: `js/content/{items,enemies,stages,shop,lootboxes}.js`. Preserve every
-ID, the array order, and the exported globals (`ITEMS`, `ENEMIES`, `STAGES`,
-`SHOP_UPGRADES`, `LOOTBOX`, `RARITY`, `pickItemRewards`, `xpToLevel`). Do not
-rename or renumber. One file per commit, `npm run verify` green.
+Introduce small context objects where they reduce coupling, per `REFACTOR_PLAN.md`
+Phase 15. Remove compatibility getters only after `rg` proves no caller. No global
+event bus. Keep gameplay/balance/art/visuals unchanged; `npm run verify` green,
+one step per commit. (Phase 14 content split is complete.)
 
 ---
 
@@ -289,7 +293,7 @@ rename or renumber. One file per commit, `npm run verify` green.
 | 11 | Player combat + drones | `js/combat/{player-combat,drone-system}.js` | ✅ DONE. `Player.update` delegates to `autoAttack` (player-combat.js) and `updateDrones` (drone-system.js); progression/state/movement/damage stay on `Player`. `tests/player-combat.test.mjs` added. |
 | 12 | Audio facade split | `js/audio/{audio-context,mixer,music,ambience,sfx,audio}.js` | ✅ DONE (this commit). Shared engine state hoisted to module globals in `audio-context.js`; verbs moved verbatim; `Audio` facade public surface unchanged; `Audio.sync(game)` builds a scene description. Old `js/audio.js` removed. `tests/audio.test.mjs` added. |
 | 13 | Sprite cache ↔ catalogs | `js/render/sprite.js`, `js/render/catalogs/*` | ✅ DONE (this commit). `sprites.js` split into `render/sprite.js` (shared `PAL`/cache/helpers + `Sprite` facade) and six catalogs; `buildAll` calls `registerXxxSprites()` in the original order. Bodies moved verbatim, so generated pixels/checksums are unchanged. Old `js/sprites.js` removed. `tests/sprite.test.mjs` added. |
-| 14 | Content data split | `js/content/{items,enemies,stages,shop,lootboxes,index}.js` | Keep IDs + array order + globals (`ITEMS`, `ENEMIES`, `STAGES`, `SHOP_UPGRADES`, `LOOTBOX`, `RARITY`, `pickItemRewards`, `xpToLevel`). Do not rename/renumber. |
+| 14 | Content data split | `js/content/{items,enemies,stages,shop,lootboxes,index}.js` | ✅ DONE (this commit). `data.js` split verbatim into five catalogs; IDs, array order, and all globals (`ITEMS`, `ENEMIES`, `STAGES`, `SHOP_UPGRADES`, `LOOTBOX`, `RARITY`, `pickItemRewards`, `xpToLevel`) preserved. Old `js/data.js` removed. `tests/content.test.mjs` added. |
 | 15 | Narrow runtime deps | (refactor only) | Introduce small context objects where they reduce coupling. Remove compatibility getters only after `rg` proves no caller. No global event bus. |
 | 16 | Build checks + docs | update `scripts/check.mjs`, `index.html`, `README.md`, this file | Scan nested JS dirs; validate script refs; fix the stale "bad frame is logged and loop continues" claim (current behavior is **fatal → stop**). |
 | 17 | Optional ES-module migration | (only after all above) | Leaf modules first; facades last; bootstrap last; no bundler. |

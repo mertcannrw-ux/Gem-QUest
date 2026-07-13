@@ -75,7 +75,7 @@ const additions = {
 };
 
 const FILES = [
-  'js/utils.js', 'js/data.js', 'js/core/game-state.js',
+  'js/utils.js', 'js/content/items.js', 'js/content/enemies.js', 'js/content/stages.js', 'js/content/shop.js', 'js/content/lootboxes.js', 'js/core/game-state.js',
   'js/ui/ui-core.js',
   'js/ui/screens/main-menu.js', 'js/ui/screens/help.js',
   'js/ui/screens/settings.js', 'js/ui/screens/hud.js',

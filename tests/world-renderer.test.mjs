@@ -17,7 +17,7 @@ function buildContext() {
     'js/platform/settings-store.js', 'js/platform/save-schema.js', 'js/platform/meta-progress.js', 'js/core/constants.js',
     'js/core/game-state.js',
     'js/core/lifecycle.js',
-    'js/data.js',
+    'js/content/items.js', 'js/content/enemies.js', 'js/content/stages.js', 'js/content/shop.js', 'js/content/lootboxes.js',
     'js/game/canvas-viewport.js',
     'js/game/game-loop.js',
     'js/game/world-session.js', 'js/world/environment-system.js', 'js/world/environment-renderer.js', 'js/world/terrain-renderer.js',

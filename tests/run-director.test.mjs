@@ -6,7 +6,7 @@ import { loadScripts } from './helpers/load-classic-scripts.mjs';
 const ROOT = [
   'js/utils.js',
   'js/core/random.js',
-  'js/data.js',
+  'js/content/items.js', 'js/content/enemies.js', 'js/content/stages.js', 'js/content/shop.js', 'js/content/lootboxes.js',
   'js/mechanics.js',
   'js/run/run-director.js',
   'js/run/combo-system.js',

@@ -30,7 +30,7 @@ function buildContext() {
     Audio: { select() {}, resume() {}, play() {}, setMuted() {}, isMuted() { return false; }, sync() {} },
     window: {}
   };
-  const ctx = loadScripts(['js/utils.js', 'js/data.js', 'js/ui/ui-core.js', 'js/ui.js'], additions);
+  const ctx = loadScripts(['js/utils.js', 'js/content/items.js', 'js/content/enemies.js', 'js/content/stages.js', 'js/content/shop.js', 'js/content/lootboxes.js', 'js/ui/ui-core.js', 'js/ui.js'], additions);
   vm.runInContext(MOCK_CTX, ctx);
   return ctx;
 }

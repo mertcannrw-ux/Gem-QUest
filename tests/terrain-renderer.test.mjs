@@ -16,7 +16,7 @@ function buildContext() {
     window: {}
   };
   return loadScripts(
-    ['js/utils.js', 'js/core/random.js', 'js/data.js', 'js/core/constants.js', 'js/core/game-state.js', 'js/core/lifecycle.js', 'js/world/terrain-renderer.js'],
+    ['js/utils.js', 'js/core/random.js', 'js/content/items.js', 'js/content/enemies.js', 'js/content/stages.js', 'js/content/shop.js', 'js/content/lootboxes.js', 'js/core/constants.js', 'js/core/game-state.js', 'js/core/lifecycle.js', 'js/world/terrain-renderer.js'],
     additions
   );
 }

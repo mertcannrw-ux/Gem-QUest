@@ -8,7 +8,7 @@ import { loadScripts } from './helpers/load-classic-scripts.mjs';
 const root = resolve(import.meta.dirname, '..');
 
 test('item rewards are unique and never include maxed items', () => {
-  const ctx = loadScripts(['js/utils.js', 'js/core/random.js', 'js/data.js']);
+  const ctx = loadScripts(['js/utils.js', 'js/core/random.js', 'js/content/items.js', 'js/content/enemies.js', 'js/content/stages.js', 'js/content/shop.js', 'js/content/lootboxes.js']);
   const result = vm.runInContext(
     `pickItemRewards({ sword: ITEM_BY_ID.sword.maxStacks }, 3, Utils.makeRng(42))
       .map((item) => item.id)`,
@@ -41,7 +41,7 @@ test('every gameplay item has matching high-resolution relic art', () => {
     'js/render/catalogs/tile-sprites.js',
     'js/render/catalogs/prop-sprites.js',
     'js/item-art.js',
-    'js/data.js'
+    'js/content/items.js', 'js/content/enemies.js', 'js/content/stages.js', 'js/content/shop.js', 'js/content/lootboxes.js'
   ]);
   const result = vm.runInContext(`({
     itemIds: ITEMS.map((item) => item.id).sort(),
@@ -275,7 +275,7 @@ test('mutations scale enemy bodies and rare mutations expose unique mechanics', 
 
 test('player stat modifiers distinguish flat and percentage damage', () => {
   const ctx = loadScripts(
-    ['js/utils.js', 'js/core/random.js', 'js/data.js', 'js/player.js', 'js/combat/player-combat.js', 'js/combat/drone-system.js'],
+    ['js/utils.js', 'js/core/random.js', 'js/content/items.js', 'js/content/enemies.js', 'js/content/stages.js', 'js/content/shop.js', 'js/content/lootboxes.js', 'js/player.js', 'js/combat/player-combat.js', 'js/combat/drone-system.js'],
     { Audio: { shoot() {} }, Input: { getMoveAxis: () => ({ x: 0, y: 0 }), mouse: {} } }
   );
   const stats = vm.runInContext(`
@@ -295,7 +295,7 @@ test('player stat modifiers distinguish flat and percentage damage', () => {
 
 test('combat drones maintain a visible orbit position and fire from their model', () => {
   const ctx = loadScripts(
-    ['js/utils.js', 'js/core/random.js', 'js/data.js', 'js/player.js', 'js/combat/player-combat.js', 'js/combat/drone-system.js'],
+    ['js/utils.js', 'js/core/random.js', 'js/content/items.js', 'js/content/enemies.js', 'js/content/stages.js', 'js/content/shop.js', 'js/content/lootboxes.js', 'js/player.js', 'js/combat/player-combat.js', 'js/combat/drone-system.js'],
     {
       Audio: { shoot() {}, shootBig() {}, deny() {} },
       Input: {
@@ -354,7 +354,7 @@ test('combat drones maintain a visible orbit position and fire from their model'
 
 test('item stacks are capped and ad revive restores a dead player', () => {
   const ctx = loadScripts(
-    ['js/utils.js', 'js/core/random.js', 'js/data.js', 'js/player.js', 'js/combat/player-combat.js', 'js/combat/drone-system.js'],
+    ['js/utils.js', 'js/core/random.js', 'js/content/items.js', 'js/content/enemies.js', 'js/content/stages.js', 'js/content/shop.js', 'js/content/lootboxes.js', 'js/player.js', 'js/combat/player-combat.js', 'js/combat/drone-system.js'],
     { Audio: { shoot() {} }, Input: { getMoveAxis: () => ({ x: 0, y: 0 }), mouse: {} } }
   );
   const result = vm.runInContext(`
@@ -374,7 +374,7 @@ test('item stacks are capped and ad revive restores a dead player', () => {
 
 test('large XP pickups queue every earned level', () => {
   const ctx = loadScripts(
-    ['js/utils.js', 'js/core/random.js', 'js/data.js', 'js/player.js', 'js/combat/player-combat.js', 'js/combat/drone-system.js'],
+    ['js/utils.js', 'js/core/random.js', 'js/content/items.js', 'js/content/enemies.js', 'js/content/stages.js', 'js/content/shop.js', 'js/content/lootboxes.js', 'js/player.js', 'js/combat/player-combat.js', 'js/combat/drone-system.js'],
     { Audio: { shoot() {} }, Input: { getMoveAxis: () => ({ x: 0, y: 0 }), mouse: {} } }
   );
   const result = vm.runInContext(`

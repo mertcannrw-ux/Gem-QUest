@@ -4,7 +4,7 @@ import test from 'node:test';
 import { loadScripts } from './helpers/load-classic-scripts.mjs';
 
 const ROOT = [
-  'js/utils.js', 'js/core/random.js', 'js/data.js',
+  'js/utils.js', 'js/core/random.js', 'js/content/items.js', 'js/content/enemies.js', 'js/content/stages.js', 'js/content/shop.js', 'js/content/lootboxes.js',
   'js/player.js', 'js/combat/projectile.js',
   'js/combat/player-combat.js', 'js/combat/drone-system.js'
 ];
