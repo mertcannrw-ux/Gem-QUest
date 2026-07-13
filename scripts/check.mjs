@@ -2,7 +2,14 @@ import { execFileSync } from 'node:child_process';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, extname, join, relative, resolve } from 'node:path';
 
+import { checkArchitecture, ENTRYPOINTS, ALL_PRODUCTION_MODULES } from './architecture.mjs';
+
 const root = resolve(import.meta.dirname, '..');
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
 function walkFiles(dir, extension) {
   const files = [];
   for (const name of readdirSync(dir)) {
@@ -15,10 +22,20 @@ function walkFiles(dir, extension) {
 }
 
 const jsFiles = walkFiles(join(root, 'js'), '.js');
+const testFiles = walkFiles(join(root, 'tests'), '.mjs');
+const scriptFiles = walkFiles(join(root, 'scripts'), '.mjs');
+
+// ---------------------------------------------------------------------------
+// 1. Syntax check all JS files
+// ---------------------------------------------------------------------------
 
 for (const file of [...jsFiles, join(root, 'serve.js')]) {
   execFileSync(process.execPath, ['--check', file], { stdio: 'inherit' });
 }
+
+// ---------------------------------------------------------------------------
+// 2. Reference checks (HTML, CSS)
+// ---------------------------------------------------------------------------
 
 const indexPath = join(root, 'index.html');
 const index = readFileSync(indexPath, 'utf8');
@@ -52,11 +69,15 @@ for (const cssFile of cssFiles) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// 3. Forbidden patterns in runtime code
+// ---------------------------------------------------------------------------
+
 const forbiddenPatterns = [
   ['dynamic code execution', /\beval\s*\(|\bnew\s+Function\s*\(/],
   ['unsafe HTML injection', /\.innerHTML\s*=|insertAdjacentHTML\s*\(/],
   ['obsolete CrazyGames SDK URL', /GameSDKv3\.js/],
-  ['obsolete CrazyGames SDK data API', /\.data\.getKeys\s*\(|\.data\.set\s*\(/]
+  ['obsolete CrazyGames SDK data API', /\.data\.getKeys\s*\(|\.data\.set\s*\(/],
 ];
 
 for (const file of [join(root, 'index.html'), ...jsFiles]) {
@@ -66,18 +87,96 @@ for (const file of [join(root, 'index.html'), ...jsFiles]) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// 4. Dead declaration detection
+// ---------------------------------------------------------------------------
+
+// Strip JS comments (both // and /* */ forms) from source.
+function stripComments(src) {
+  return src
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/\/\/[^\n]*/g, '');
+}
+
 const runtimeSource = jsFiles.map((file) => readFileSync(file, 'utf8')).join('\n');
+const strippedRuntime = stripComments(runtimeSource);
 const declarations = [
-  ...runtimeSource.matchAll(/\b(?:function|class)\s+([A-Za-z_$][\w$]*)/g),
-  ...runtimeSource.matchAll(/\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:\([^)]*\)|[A-Za-z_$][\w$]*)\s*=>/g)
+  ...strippedRuntime.matchAll(/\b(?:function|class)\s+([A-Za-z_$][\w$]*)/g),
+  ...strippedRuntime.matchAll(/\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:\([^)]*\)|[A-Za-z_$][\w$]*)\s*=>/g)
 ].map((match) => match[1]);
+
+// Dead declaration detection uses stripped source to avoid comment false positives.
+// A declaration is considered dead if it appears exactly once across all runtime
+// files (its declaration site). Cross-file duplicates are expected in the
+// classic-script IIFE model and are not flagged.
 const deadDeclarations = [...new Set(declarations)].filter((name) => {
   const escaped = name.replace(/[$]/g, '\\$&');
-  return (runtimeSource.match(new RegExp(`\\b${escaped}\\b`, 'g')) || []).length === 1;
+  return (strippedRuntime.match(new RegExp(`\\b${escaped}\\b`, 'g')) || []).length === 1;
 });
 if (deadDeclarations.length) {
   throw new Error(`Unused runtime declarations: ${deadDeclarations.join(', ')}`);
 }
+
+// ---------------------------------------------------------------------------
+// 5. Production references to test-only globals
+// ---------------------------------------------------------------------------
+
+const testGlobalPattern = /\b__GemQuestTestConfig\b|\b__gemQuestTest\b|\b__gemQuestDebug\b/;
+const testGlobalFiles = jsFiles.filter((file) => {
+  // Allow in bootstrap (main.js), SDK adapter (sdk.js), and test adapter
+  if (file.endsWith('main.js')) return false;
+  if (file.endsWith('sdk.js')) return false;
+  if (file.endsWith('test-adapter.js')) return false;
+  return testGlobalPattern.test(readFileSync(file, 'utf8'));
+});
+if (testGlobalFiles.length) {
+  throw new Error(`Test-only globals referenced in production:\n${
+    testGlobalFiles.map((f) => `  ${relative(root, f)}`).join('\n')
+  }`);
+}
+
+// ---------------------------------------------------------------------------
+// 6. No runtime imports from tests, scripts, or dist
+// ---------------------------------------------------------------------------
+
+const importRe = /(?:import\s+(?:[\s\S]*?\s+from\s+)?['"]|require\s*\(\s*['"])([^'"]+)['"]/g;
+for (const file of jsFiles) {
+  const source = readFileSync(file, 'utf8');
+  for (const match of source.matchAll(importRe)) {
+    const ref = match[1];
+    if (/^tests\//.test(ref) || ref.includes('tests/')) {
+      throw new Error(`Runtime import from tests in ${relative(root, file)}: ${ref}`);
+    }
+    if (/^scripts\//.test(ref) || ref.includes('scripts/')) {
+      throw new Error(`Runtime import from scripts in ${relative(root, file)}: ${ref}`);
+    }
+    if (/^dist\//.test(ref) || ref.includes('/dist/')) {
+      throw new Error(`Runtime import from dist in ${relative(root, file)}: ${ref}`);
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 7. Test assertions targeting files absent from production graph
+// ---------------------------------------------------------------------------
+
+for (const testFile of testFiles) {
+  const source = readFileSync(testFile, 'utf8');
+  // Look for paths like 'js/...' in test source that reference production files
+  const prodRefs = source.matchAll(/['"]js\/[^'"]+\.js['"]/g);
+  for (const refMatch of prodRefs) {
+    const ref = refMatch[0].replace(/['"]/g, '');
+    if (!ALL_PRODUCTION_MODULES.has(ref)) {
+      throw new Error(
+        `Test references non-production file: ${ref} in ${relative(root, testFile)}`
+      );
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 8. Asset usage verification
+// ---------------------------------------------------------------------------
 
 const referenceSource = [
   index,
@@ -88,6 +187,10 @@ for (const name of readdirSync(join(root, 'assets'))) {
   const assetPath = `assets/${name}`;
   if (!referenceSource.includes(assetPath)) throw new Error(`Unused asset: ${assetPath}`);
 }
+
+// ---------------------------------------------------------------------------
+// 9. Repository sizing
+// ---------------------------------------------------------------------------
 
 const assetFiles = [];
 function walk(dir) {
@@ -106,4 +209,14 @@ const relevantCount = assetFiles.filter((file) => extname(file) !== '.md').lengt
 if (relevantCount > 1500) throw new Error(`File count exceeds platform limit: ${relevantCount}`);
 if (totalBytes > 50 * 1024 * 1024) throw new Error(`Repository exceeds 50 MB: ${totalBytes} bytes`);
 
-console.log(`Checks passed (${jsFiles.length + 1} scripts, no dead declarations/assets, ${relevantCount} source files, ${totalBytes} bytes).`);
+// ---------------------------------------------------------------------------
+// 10. Architecture checks
+// ---------------------------------------------------------------------------
+
+checkArchitecture(root, { fatal: true });
+
+// ---------------------------------------------------------------------------
+// Done
+// ---------------------------------------------------------------------------
+
+console.log(`Checks passed (${jsFiles.length + 1} scripts, ${testFiles.length} tests, no dead declarations/assets, ${relevantCount} source files, ${totalBytes} bytes).`);
