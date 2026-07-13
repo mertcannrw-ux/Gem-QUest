@@ -75,6 +75,7 @@ test('audio exposes contextual events and player-controlled mix/accessibility se
 test('environment rendering includes a bottom-anchored forest prop family and terrain variants', () => {
   const source = readFileSync(resolve(root, 'js/sprites.js'), 'utf8');
   const renderer = readFileSync(resolve(root, 'js/game.js'), 'utf8');
+  const worldRenderer = readFileSync(resolve(root, 'js/world/world-renderer.js'), 'utf8');
   const envSystem = readFileSync(resolve(root, 'js/world/environment-system.js'), 'utf8');
   const envRenderer = readFileSync(resolve(root, 'js/world/environment-renderer.js'), 'utf8');
   for (const id of [
@@ -104,8 +105,8 @@ test('environment rendering includes a bottom-anchored forest prop family and te
   assert.match(source, /const forestPalette = \{/);
   assert.doesNotMatch(source, /function leafyCanopy\(/);
   assert.match(source, /const bounds = right >= left/);
-  assert.match(renderer, /renderProps\(ctx, stage, 'ground'\)/);
-  assert.match(renderer, /renderProps\(ctx, stage, 'foreground'\)/);
+  assert.match(worldRenderer, /renderProps\(ctx, stage, 'ground'\)/);
+  assert.match(worldRenderer, /renderProps\(ctx, stage, 'foreground'\)/);
   assert.match(envSystem, /environmentProps\(stage\)/);
   assert.match(envRenderer, /const canopyLift = \{/);
   assert.match(envRenderer, /const anchorBottom = bounds\.bottom \+ 1/);
@@ -119,7 +120,7 @@ test('environment rendering includes a bottom-anchored forest prop family and te
 });
 
 test('trees remain solid, block traced projectiles, and become non-solid stumps after destruction', () => {
-  const ctx = loadScripts(['js/utils.js', 'js/core/random.js', 'js/platform/settings-store.js', 'js/platform/save-schema.js', 'js/platform/meta-progress.js', 'js/core/constants.js', 'js/core/game-state.js', 'js/core/lifecycle.js', 'js/game/canvas-viewport.js', 'js/game/game-loop.js', 'js/game/world-session.js', 'js/world/environment-system.js', 'js/world/environment-renderer.js', 'js/world/terrain-renderer.js', 'js/core/random.js', 'js/combat/combat-coordinator.js', 'js/game.js'], {
+  const ctx = loadScripts(['js/utils.js', 'js/core/random.js', 'js/platform/settings-store.js', 'js/platform/save-schema.js', 'js/platform/meta-progress.js', 'js/core/constants.js', 'js/core/game-state.js', 'js/core/lifecycle.js', 'js/game/canvas-viewport.js', 'js/game/game-loop.js', 'js/game/world-session.js', 'js/world/environment-system.js', 'js/world/environment-renderer.js', 'js/world/terrain-renderer.js', 'js/core/random.js', 'js/combat/combat-coordinator.js', 'js/world/world-renderer.js', 'js/world/menu-background-renderer.js', 'js/game.js'], {
     Audio: { play() {} },
     ParticleSystem: class {},
     RunDirector: class {},
@@ -167,7 +168,7 @@ test('trees remain solid, block traced projectiles, and become non-solid stumps 
 });
 
 test('starting a new run defensively initializes persistent environment containers', () => {
-  const ctx = loadScripts(['js/utils.js', 'js/core/random.js', 'js/platform/settings-store.js', 'js/platform/save-schema.js', 'js/platform/meta-progress.js', 'js/core/constants.js', 'js/core/game-state.js', 'js/core/lifecycle.js', 'js/game/canvas-viewport.js', 'js/game/game-loop.js', 'js/game/world-session.js', 'js/world/environment-system.js', 'js/world/environment-renderer.js', 'js/world/terrain-renderer.js', 'js/core/random.js', 'js/combat/combat-coordinator.js', 'js/game.js'], {
+  const ctx = loadScripts(['js/utils.js', 'js/core/random.js', 'js/platform/settings-store.js', 'js/platform/save-schema.js', 'js/platform/meta-progress.js', 'js/core/constants.js', 'js/core/game-state.js', 'js/core/lifecycle.js', 'js/game/canvas-viewport.js', 'js/game/game-loop.js', 'js/game/world-session.js', 'js/world/environment-system.js', 'js/world/environment-renderer.js', 'js/world/terrain-renderer.js', 'js/core/random.js', 'js/combat/combat-coordinator.js', 'js/world/world-renderer.js', 'js/world/menu-background-renderer.js', 'js/game.js'], {
     Audio: { resume() {} },
     Player: class {
       constructor() {
@@ -677,7 +678,7 @@ test('touch release does not clear a still-held keyboard direction', () => {
 
 test('canvas backing resolution follows physical display pixels', () => {
   const ctx = loadScripts(
-    ['js/platform/settings-store.js', 'js/platform/save-schema.js', 'js/platform/meta-progress.js', 'js/core/constants.js', 'js/core/game-state.js', 'js/core/lifecycle.js', 'js/game/canvas-viewport.js', 'js/game/game-loop.js', 'js/game/world-session.js', 'js/world/environment-system.js', 'js/world/environment-renderer.js', 'js/world/terrain-renderer.js', 'js/core/random.js', 'js/combat/combat-coordinator.js', 'js/game.js'],
+    ['js/platform/settings-store.js', 'js/platform/save-schema.js', 'js/platform/meta-progress.js', 'js/core/constants.js', 'js/core/game-state.js', 'js/core/lifecycle.js', 'js/game/canvas-viewport.js', 'js/game/game-loop.js', 'js/game/world-session.js', 'js/world/environment-system.js', 'js/world/environment-renderer.js', 'js/world/terrain-renderer.js', 'js/core/random.js', 'js/combat/combat-coordinator.js', 'js/world/world-renderer.js', 'js/world/menu-background-renderer.js', 'js/game.js'],
     {
       SHOP_UPGRADES: [],
       STAGES: [],
@@ -705,7 +706,7 @@ test('canvas backing resolution follows physical display pixels', () => {
 
 test('main-menu forge creates a persistent shop profile without starting a run', () => {
   const ctx = loadScripts(
-    ['js/platform/settings-store.js', 'js/platform/save-schema.js', 'js/platform/meta-progress.js', 'js/core/constants.js', 'js/core/game-state.js', 'js/core/lifecycle.js', 'js/game/canvas-viewport.js', 'js/game/game-loop.js', 'js/game/world-session.js', 'js/world/environment-system.js', 'js/world/environment-renderer.js', 'js/world/terrain-renderer.js', 'js/core/random.js', 'js/combat/combat-coordinator.js', 'js/game.js'],
+    ['js/platform/settings-store.js', 'js/platform/save-schema.js', 'js/platform/meta-progress.js', 'js/core/constants.js', 'js/core/game-state.js', 'js/core/lifecycle.js', 'js/game/canvas-viewport.js', 'js/game/game-loop.js', 'js/game/world-session.js', 'js/world/environment-system.js', 'js/world/environment-renderer.js', 'js/world/terrain-renderer.js', 'js/core/random.js', 'js/combat/combat-coordinator.js', 'js/world/world-renderer.js', 'js/world/menu-background-renderer.js', 'js/game.js'],
     {
       SHOP_UPGRADES: [],
       STAGES: [],
@@ -749,7 +750,7 @@ test('main-menu forge creates a persistent shop profile without starting a run',
 test('main-menu forge renders without requiring a stage HUD', () => {
   const calls = [];
   const ctx = loadScripts(
-    ['js/platform/settings-store.js', 'js/platform/save-schema.js', 'js/platform/meta-progress.js', 'js/core/constants.js', 'js/core/game-state.js', 'js/core/lifecycle.js', 'js/game/canvas-viewport.js', 'js/game/game-loop.js', 'js/game/world-session.js', 'js/world/environment-system.js', 'js/world/environment-renderer.js', 'js/world/terrain-renderer.js', 'js/core/random.js', 'js/combat/combat-coordinator.js', 'js/game.js'],
+    ['js/platform/settings-store.js', 'js/platform/save-schema.js', 'js/platform/meta-progress.js', 'js/core/constants.js', 'js/core/game-state.js', 'js/core/lifecycle.js', 'js/game/canvas-viewport.js', 'js/game/game-loop.js', 'js/game/world-session.js', 'js/world/environment-system.js', 'js/world/environment-renderer.js', 'js/world/terrain-renderer.js', 'js/core/random.js', 'js/combat/combat-coordinator.js', 'js/world/world-renderer.js', 'js/world/menu-background-renderer.js', 'js/game.js'],
     {
       SHOP_UPGRADES: [],
       STAGES: [],
@@ -792,7 +793,7 @@ test('main-menu forge renders without requiring a stage HUD', () => {
 
 test('stage completion proceeds when a boss lootbox has no item choices', () => {
   const ctx = loadScripts(
-    ['js/lootbox.js', 'js/platform/settings-store.js', 'js/platform/save-schema.js', 'js/platform/meta-progress.js', 'js/core/constants.js', 'js/core/game-state.js', 'js/core/lifecycle.js', 'js/game/canvas-viewport.js', 'js/game/game-loop.js', 'js/game/world-session.js', 'js/world/environment-system.js', 'js/world/environment-renderer.js', 'js/world/terrain-renderer.js', 'js/core/random.js', 'js/combat/combat-coordinator.js', 'js/game.js'],
+    ['js/lootbox.js', 'js/platform/settings-store.js', 'js/platform/save-schema.js', 'js/platform/meta-progress.js', 'js/core/constants.js', 'js/core/game-state.js', 'js/core/lifecycle.js', 'js/game/canvas-viewport.js', 'js/game/game-loop.js', 'js/game/world-session.js', 'js/world/environment-system.js', 'js/world/environment-renderer.js', 'js/world/terrain-renderer.js', 'js/core/random.js', 'js/combat/combat-coordinator.js', 'js/world/world-renderer.js', 'js/world/menu-background-renderer.js', 'js/game.js'],
     {
       LOOTBOX: { gold: { count: 3 } },
       pickItemRewards: () => [],
@@ -838,7 +839,7 @@ test('stage completion proceeds when a boss lootbox has no item choices', () => 
 
 test('stage-complete state freezes combat while allowing particles to animate', () => {
   const ctx = loadScripts(
-    ['js/platform/settings-store.js', 'js/platform/save-schema.js', 'js/platform/meta-progress.js', 'js/core/constants.js', 'js/core/game-state.js', 'js/core/lifecycle.js', 'js/game/canvas-viewport.js', 'js/game/game-loop.js', 'js/game/world-session.js', 'js/world/environment-system.js', 'js/world/environment-renderer.js', 'js/world/terrain-renderer.js', 'js/core/random.js', 'js/combat/combat-coordinator.js', 'js/game.js'],
+    ['js/platform/settings-store.js', 'js/platform/save-schema.js', 'js/platform/meta-progress.js', 'js/core/constants.js', 'js/core/game-state.js', 'js/core/lifecycle.js', 'js/game/canvas-viewport.js', 'js/game/game-loop.js', 'js/game/world-session.js', 'js/world/environment-system.js', 'js/world/environment-renderer.js', 'js/world/terrain-renderer.js', 'js/core/random.js', 'js/combat/combat-coordinator.js', 'js/world/world-renderer.js', 'js/world/menu-background-renderer.js', 'js/game.js'],
     {
       SHOP_UPGRADES: [],
       STAGES: [],
@@ -878,7 +879,7 @@ test('stage-complete state freezes combat while allowing particles to animate', 
 
 test('stage completion stops director and pickup updates in its transition frame', () => {
   const ctx = loadScripts(
-    ['js/platform/settings-store.js', 'js/platform/save-schema.js', 'js/platform/meta-progress.js', 'js/core/constants.js', 'js/core/game-state.js', 'js/core/lifecycle.js', 'js/game/canvas-viewport.js', 'js/game/game-loop.js', 'js/game/world-session.js', 'js/world/environment-system.js', 'js/world/environment-renderer.js', 'js/world/terrain-renderer.js', 'js/core/random.js', 'js/combat/combat-coordinator.js', 'js/game.js'],
+    ['js/platform/settings-store.js', 'js/platform/save-schema.js', 'js/platform/meta-progress.js', 'js/core/constants.js', 'js/core/game-state.js', 'js/core/lifecycle.js', 'js/game/canvas-viewport.js', 'js/game/game-loop.js', 'js/game/world-session.js', 'js/world/environment-system.js', 'js/world/environment-renderer.js', 'js/world/terrain-renderer.js', 'js/core/random.js', 'js/combat/combat-coordinator.js', 'js/world/world-renderer.js', 'js/world/menu-background-renderer.js', 'js/game.js'],
     {
       SHOP_UPGRADES: [],
       STAGES: [{ id: 'forest' }],
@@ -930,7 +931,7 @@ test('stage completion stops director and pickup updates in its transition frame
 test('a fatal game-loop error stops further animation frames', () => {
   let scheduledFrames = 0;
   const ctx = loadScripts(
-    ['js/platform/settings-store.js', 'js/platform/save-schema.js', 'js/platform/meta-progress.js', 'js/core/constants.js', 'js/core/game-state.js', 'js/core/lifecycle.js', 'js/game/canvas-viewport.js', 'js/game/game-loop.js', 'js/game/world-session.js', 'js/world/environment-system.js', 'js/world/environment-renderer.js', 'js/world/terrain-renderer.js', 'js/core/random.js', 'js/combat/combat-coordinator.js', 'js/game.js'],
+    ['js/platform/settings-store.js', 'js/platform/save-schema.js', 'js/platform/meta-progress.js', 'js/core/constants.js', 'js/core/game-state.js', 'js/core/lifecycle.js', 'js/game/canvas-viewport.js', 'js/game/game-loop.js', 'js/game/world-session.js', 'js/world/environment-system.js', 'js/world/environment-renderer.js', 'js/world/terrain-renderer.js', 'js/core/random.js', 'js/combat/combat-coordinator.js', 'js/world/world-renderer.js', 'js/world/menu-background-renderer.js', 'js/game.js'],
     {
       SHOP_UPGRADES: [],
       STAGES: [],

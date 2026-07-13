@@ -161,6 +161,22 @@ class Game {
   }
   set terrainRenderer(v) { this._terrainRenderer = v; }
 
+  // World composition (background, props, entities, lighting, vignette) lives
+  // in WorldRenderer; the same lazy pattern keeps partial fixtures working.
+  get worldRenderer() {
+    if (!this._worldRenderer) this._worldRenderer = new WorldRenderer(this);
+    return this._worldRenderer;
+  }
+  set worldRenderer(v) { this._worldRenderer = v; }
+
+  // The procedural main-menu backdrop lives in MenuBackgroundRenderer; the
+  // same lazy pattern keeps partial fixtures working.
+  get menuBackgroundRenderer() {
+    if (!this._menuBackgroundRenderer) this._menuBackgroundRenderer = new MenuBackgroundRenderer(this);
+    return this._menuBackgroundRenderer;
+  }
+  set menuBackgroundRenderer(v) { this._menuBackgroundRenderer = v; }
+
   // Cross-entity combat outcomes (level-ups, boss rewards, kill drops) live in
   // CombatCoordinator; the same lazy pattern keeps partial fixtures working.
   get combat() {
@@ -653,74 +669,7 @@ class Game {
   }
 
   renderWorld() {
-    const ctx = this.ctx;
-    const s = this.stage;
-    const stage = s ? STAGES[s.index] : STAGES[0];
-
-    // ===== Background sky / depth gradient =====
-    if (!this._bgGradient || this._bgStageId !== stage.id || this._bgVh !== this.vh) {
-      this._bgStageId = stage.id;
-      this._bgVh = this.vh;
-      this._bgGradient = ctx.createLinearGradient(0, 0, 0, this.vh);
-      if (stage.id === 'forest') {
-        this._bgGradient.addColorStop(0, '#0a1a0a');
-        this._bgGradient.addColorStop(1, stage.bg.ground);
-      } else if (stage.id === 'caves') {
-        this._bgGradient.addColorStop(0, '#0a0a1a');
-        this._bgGradient.addColorStop(1, stage.bg.ground);
-      } else if (stage.id === 'castle') {
-        this._bgGradient.addColorStop(0, '#0a0010');
-        this._bgGradient.addColorStop(1, stage.bg.ground);
-      } else { // dragon
-        this._bgGradient.addColorStop(0, '#1a0000');
-        this._bgGradient.addColorStop(1, stage.bg.ground);
-      }
-    }
-    ctx.fillStyle = this._bgGradient;
-    ctx.fillRect(0, 0, this.vw, this.vh);
-
-    // ===== Distant parallax layer (stars / fog) =====
-    this.renderParallaxBack(ctx);
-
-    // ===== Tiled ground =====
-    this.renderTiles(ctx, stage);
-    this.renderTerrainDetails(ctx, stage);
-
-    // Event atmosphere sits behind combatants so the arena itself appears
-    // transformed without obscuring moment-to-moment readability.
-    this.director.renderBackdrop(ctx, this.cam);
-
-    // ===== Apply camera shake for world =====
-    ctx.save();
-    ctx.translate(this.shake.x, this.shake.y);
-
-    // ===== Low environment and trunks =====
-    this.renderProps(ctx, stage, 'ground');
-
-    // Pickups
-    ITEMS_RUNTIME.renderPickups(ctx, this.cam);
-    // Lootboxes (closed)
-    for (const lb of this.lootboxes) if (!lb.opened) lb.render(ctx, this.cam);
-    // Enemies
-    for (const e of this.enemies) e.render(ctx, this.cam);
-    // Projectiles
-    for (const p of this.projectiles) p.render(ctx, this.cam);
-    for (const p of this.enemyProjectiles) p.render(ctx, this.cam);
-    // Player
-    if (this.player) this.player.render(ctx, this.cam);
-    this.director.renderWorld(ctx, this.cam);
-    // Canopies, arches, and other tall scenery sit in a separate foreground
-    // layer. They fade when covering the player, preserving combat clarity.
-    this.renderProps(ctx, stage, 'foreground');
-    // Particles
-    this.particles.render(ctx, this.cam);
-
-    ctx.restore();
-
-    this.renderWorldLighting(ctx, stage);
-    // ===== Vignette + edge fade =====
-    this.renderVignette(ctx, stage);
-    this.director.renderEventOverlay(ctx, this.cam);
+    return this.worldRenderer.render(this);
   }
 
   // --- Terrain delegation shims ---
@@ -762,134 +711,19 @@ class Game {
     return this.environmentRenderer.renderProps(ctx, stage, layer);
   }
 
-  // Subtle vignette darkening at screen edges
+  // World lighting / vignette are composed by WorldRenderer; these thin
+  // delegates keep the public method names working for callers and the
+  // render-order test contract while the implementation lives in
+  // world-renderer.js.
   renderVignette(ctx, stage) {
-    if (!this._vignetteGradient || this._vigW !== this.vw || this._vigH !== this.vh || this._vigStageId !== stage.id) {
-      this._vigW = this.vw;
-      this._vigH = this.vh;
-      this._vigStageId = stage.id;
-      this._vignetteGradient = ctx.createRadialGradient(
-        this.vw / 2, this.vh / 2, this.vh * 0.3,
-        this.vw / 2, this.vh / 2, this.vh * 0.7
-      );
-      const edge = stage.id === 'caves' ? 'rgba(0,0,0,0.5)'
-        : stage.id === 'castle' ? 'rgba(20,0,10,0.5)'
-        : 'rgba(0,0,0,0.35)';
-      this._vignetteGradient.addColorStop(0, 'rgba(0,0,0,0)');
-      this._vignetteGradient.addColorStop(1, edge);
-    }
-    ctx.fillStyle = this._vignetteGradient;
-    ctx.fillRect(0, 0, this.vw, this.vh);
+    return this.worldRenderer.renderVignette(ctx, stage);
   }
 
   renderMenuBackground() {
-    const ctx = this.ctx;
-    const t = this.time;
-    const grad = ctx.createRadialGradient(this.vw * 0.5, this.vh * 0.38, 40,
-      this.vw * 0.5, this.vh * 0.5, 850);
-    grad.addColorStop(0, '#351a66');
-    grad.addColorStop(0.48, '#100d2d');
-    grad.addColorStop(1, '#03050f');
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, this.vw, this.vh);
-
-    // Layered arcane skyline: fully procedural, consistent with the in-game look.
-    for (let layer = 0; layer < 3; layer++) {
-      const baseY = 360 + layer * 75;
-      const speed = (layer + 1) * 3;
-      ctx.fillStyle = ['rgba(12,11,38,.9)', 'rgba(8,8,27,.95)', '#050611'][layer];
-      ctx.beginPath();
-      ctx.moveTo(0, this.vh);
-      ctx.lineTo(0, baseY);
-      for (let x = 0; x <= this.vw + 80; x += 80) {
-        const seed = Math.sin((x + layer * 97) * 0.021 + t * speed * 0.001);
-        ctx.lineTo(x, baseY - 40 - Math.abs(seed) * (80 + layer * 25));
-      }
-      ctx.lineTo(this.vw, this.vh);
-      ctx.closePath();
-      ctx.fill();
-    }
-
-    // Constellation field and drifting motes.
-    for (let i = 0; i < 95; i++) {
-      const x = (i * 173 + t * (4 + i % 3)) % (this.vw + 30) - 15;
-      const y = 20 + (i * 79) % 430;
-      const pulse = 0.25 + Math.max(0, Math.sin(t * 2.2 + i)) * 0.55;
-      ctx.fillStyle = i % 7 === 0 ? `rgba(192,132,252,${pulse})` : `rgba(165,243,252,${pulse})`;
-      ctx.fillRect(x, y, i % 7 === 0 ? 3 : 2, i % 7 === 0 ? 3 : 2);
-    }
-
-    // Central floating rift-gem focal point.
-    const cx = this.vw * 0.5, cy = 250 + Math.sin(t * 1.4) * 7;
-    ctx.save();
-    ctx.translate(cx, cy);
-    ctx.rotate(t * 0.18);
-    ctx.globalCompositeOperation = 'lighter';
-    for (let i = 4; i > 0; i--) {
-      ctx.fillStyle = `rgba(${100 + i * 20},${80 + i * 24},255,${0.035 * i})`;
-      ctx.beginPath();
-      ctx.arc(0, 0, 45 + i * 28, 0, Math.PI * 2);
-      ctx.fill();
-    }
-    ctx.globalCompositeOperation = 'source-over';
-    const gem = ctx.createLinearGradient(-30, -55, 35, 55);
-    gem.addColorStop(0, '#e9d5ff');
-    gem.addColorStop(0.35, '#a855f7');
-    gem.addColorStop(1, '#0891b2');
-    ctx.fillStyle = gem;
-    ctx.strokeStyle = '#f5d0fe';
-    ctx.lineWidth = 3;
-    ctx.shadowColor = '#c084fc';
-    ctx.shadowBlur = 35;
-    ctx.beginPath();
-    ctx.moveTo(0, -64); ctx.lineTo(42, -16); ctx.lineTo(25, 52);
-    ctx.lineTo(0, 72); ctx.lineTo(-25, 52); ctx.lineTo(-42, -16);
-    ctx.closePath(); ctx.fill(); ctx.stroke();
-    ctx.strokeStyle = 'rgba(255,255,255,.65)';
-    ctx.lineWidth = 2; ctx.shadowBlur = 0;
-    ctx.beginPath(); ctx.moveTo(0, -64); ctx.lineTo(0, 72);
-    ctx.moveTo(-42, -16); ctx.lineTo(42, -16);
-    ctx.moveTo(-42, -16); ctx.lineTo(0, 10); ctx.lineTo(42, -16); ctx.stroke();
-    ctx.restore();
-
-    const fog = ctx.createLinearGradient(0, 400, 0, this.vh);
-    fog.addColorStop(0, 'rgba(14,116,144,0)');
-    fog.addColorStop(1, 'rgba(14,116,144,.13)');
-    ctx.fillStyle = fog;
-    ctx.fillRect(0, 400, this.vw, this.vh - 400);
+    return this.menuBackgroundRenderer.render(this);
   }
 
   renderWorldLighting(ctx, stage) {
-    const palette = {
-      forest: ['rgba(4,18,13,.18)', 'rgba(112,255,176,.14)'],
-      caves: ['rgba(7,5,24,.24)', 'rgba(107,146,255,.16)'],
-      castle: ['rgba(18,4,24,.22)', 'rgba(221,128,255,.13)'],
-      dragon: ['rgba(28,4,0,.18)', 'rgba(255,111,55,.18)']
-    }[stage.id] || ['rgba(5,7,18,.18)', 'rgba(145,180,255,.12)'];
-
-    ctx.save();
-    ctx.fillStyle = palette[0];
-    ctx.fillRect(0, 0, this.vw, this.vh);
-
-    if (this.player) {
-      const px = this.player.x - this.cam.x;
-      const py = this.player.y - this.cam.y;
-      const glow = ctx.createRadialGradient(px, py, 18, px, py, 250);
-      glow.addColorStop(0, palette[1]);
-      glow.addColorStop(.42, palette[1].replace(/[\d.]+\)$/, '.06)'));
-      glow.addColorStop(1, 'rgba(0,0,0,0)');
-      ctx.globalCompositeOperation = 'screen';
-      ctx.fillStyle = glow;
-      ctx.fillRect(px - 250, py - 250, 500, 500);
-    }
-
-    const horizon = ctx.createLinearGradient(0, 0, 0, this.vh);
-    horizon.addColorStop(0, 'rgba(255,255,255,.025)');
-    horizon.addColorStop(.55, 'rgba(255,255,255,0)');
-    horizon.addColorStop(1, 'rgba(0,0,0,.12)');
-    ctx.globalCompositeOperation = 'source-over';
-    ctx.fillStyle = horizon;
-    ctx.fillRect(0, 0, this.vw, this.vh);
-    ctx.restore();
+    return this.worldRenderer.renderWorldLighting(ctx, stage);
   }
 }
