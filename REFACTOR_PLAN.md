@@ -826,6 +826,12 @@ it with narrower models only after all screens are split.
 
 ## 15. Phase 8 — Replace the State Conditional with State Handlers
 
+> **Status: ✅ COMPLETE** (committed in this session). `GAME_STATE_HANDLERS` lives in
+> `js/core/game-state.js`; `Game.update`/`render`/`handleClick`/`handleKey` delegate to the
+> active handler and `transitionTo` calls `exit`→assign→`enter`. Lootbox pick lives in the
+> `PLAYING` handler, level-up card pick in `LEVEL_UP`, pause toggling in `PLAYING`/`PAUSED`.
+> `npm run verify` green (107 tests).
+
 ### Goal
 
 Remove the large state-dependent `if/else` blocks from `Game.update`,

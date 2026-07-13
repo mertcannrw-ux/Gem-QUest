@@ -231,15 +231,20 @@ class Game {
   transitionTo(nextState, options = {}) {
     if (!isGameState(nextState)) return false;
     if (this.state === nextState) return false;
-    const wasPlaying = this.state === GAME_STATE.PLAYING;
-    if (options.storePrevious) this.previousState = this.state;
-    if (options.storeShopReturn) this.shopReturnState = this.state;
+    const prev = this.state;
+    const leaving = GAME_STATE_HANDLERS[prev];
+    if (leaving && leaving.exit) leaving.exit(this, nextState);
+    const wasPlaying = prev === GAME_STATE.PLAYING;
+    if (options.storePrevious) this.previousState = prev;
+    if (options.storeShopReturn) this.shopReturnState = prev;
     if (nextState === GAME_STATE.PLAYING && !wasPlaying) {
       GameLifecycle.enterInteractivePlay();
     } else if (wasPlaying && nextState !== GAME_STATE.PLAYING) {
       GameLifecycle.leaveInteractivePlay();
     }
     this.state = nextState;
+    const entering = GAME_STATE_HANDLERS[nextState];
+    if (entering && entering.enter) entering.enter(this, prev, options);
     return true;
   }
 
@@ -360,64 +365,14 @@ class Game {
   }
 
   handleClick(mx, my) {
-    // Lootbox pick?
-    if (this.state === GAME_STATE.PLAYING) {
-      for (const lb of this.lootboxes) {
-        if (lb.opened && lb.choices) {
-          // Compute card hit area
-          const w = 96, h = 132, gap = 14;
-          const total = w * lb.choices.length + gap * (lb.choices.length - 1);
-          const startX = this.vw / 2 - total / 2;
-          const targetY = this.vh / 2 - h / 2;
-          for (let i = 0; i < lb.choices.length; i++) {
-            const cx = startX + i * (w + gap) + w / 2;
-            const r = { x: cx - w / 2, y: targetY, w, h };
-            if (mx >= r.x && mx <= r.x + r.w && my >= r.y && my <= r.y + r.h) {
-              lb.pick(i);
-              return;
-            }
-          }
-        }
-      }
-    }
-    if (this.state === GAME_STATE.LEVEL_UP) {
-      if (this.levelUpChoices) {
-        const cw = 200, ch = 280, gap = 24;
-        const totalW = cw * this.levelUpChoices.length + gap * (this.levelUpChoices.length - 1);
-        const startX = this.vw / 2 - totalW / 2;
-        const cardY = 170;
-        for (let i = 0; i < this.levelUpChoices.length; i++) {
-          const cx = startX + i * (cw + gap);
-          if (mx >= cx && mx <= cx + cw && my >= cardY && my <= cardY + ch) {
-            const it = this.levelUpChoices[i];
-            this.player.addItem(it.id);
-            Audio.play?.('reward.reveal', { rarity: it.rarity, x: this.player.x, y: this.player.y });
-            this.particles.spawnBurst(this.vw / 2, cardY + ch / 2, RARITY[it.rarity.toUpperCase()].color, 30, 250);
-            this.levelUpChoices = null;
-            this.combat.pendingLevelUps = Math.max(0, this.combat.pendingLevelUps - 1);
-            this.presentLevelUpChoice();
-            return;
-          }
-        }
-      }
-    }
-    if (this.state === GAME_STATE.MENU || this.state === GAME_STATE.HELP || this.state === GAME_STATE.SETTINGS ||
-        this.state === GAME_STATE.SHOP || this.state === GAME_STATE.GAME_OVER ||
-        this.state === GAME_STATE.STAGE_COMPLETE || this.state === GAME_STATE.VICTORY ||
-        this.state === GAME_STATE.PAUSED) {
-      UI.handleClick(mx, my);
-    }
+    const handler = GAME_STATE_HANDLERS[this.state];
+    if (handler && handler.click) handler.click(this, mx, my);
   }
 
   // Pause toggling via Escape
   handleKey(k) {
-    if (k === 'escape' || k === 'p') {
-      if (this.state === GAME_STATE.PLAYING) {
-        this.transitionTo(GAME_STATE.PAUSED, { storePrevious: true });
-      } else if (this.state === GAME_STATE.PAUSED) {
-        this.resume();
-      }
-    }
+    const handler = GAME_STATE_HANDLERS[this.state];
+    if (handler && handler.key) handler.key(this, k);
   }
 
   async persistMeta() {
@@ -539,71 +494,8 @@ class Game {
     this.shake.y *= shakeStrength;
     Audio.sync?.(this);
 
-    if (this.state === GAME_STATE.PLAYING) {
-      // Spawn the player at world origin if not present
-      const stageDef = STAGES[this.stage.index];
-      this.ensureEnvironmentAround(stageDef, this.player.x, this.player.y, 2);
-      this.environment.updateEnvironment(dt);
-      this.player.update(dt, this);
-      // Keep camera on player with smooth follow
-      const tx = this.player.x - this.vw / 2;
-      const ty = this.player.y - this.vh / 2;
-      this.cam.x = Utils.lerp(this.cam.x, tx, 0.1);
-      this.cam.y = Utils.lerp(this.cam.y, ty, 0.1);
-      Input.updateMouseWorld(this.cam);
-      this.environment.ensureEnvironmentAround(stageDef, this.player.x, this.player.y, 2);
-
-      // Stage
-      this.stage.update(dt, this);
-
-      // Enemies
-      for (const e of this.enemies) e.update(dt, this);
-      // dead entities compacted by WorldSession
-      // Projectiles
-      for (const p of this.projectiles) p.update(dt, this);
-      // dead entities compacted by WorldSession
-      for (const p of this.enemyProjectiles) p.update(dt, this);
-      // dead entities compacted by WorldSession
-      // Lootboxes
-      for (const lb of this.lootboxes) lb.update(dt, this);
-      this.world.compactDeadEntities();
-      if (this.completeStageIfReady()) {
-        // Stage completion is atomic: only non-combat visuals can advance
-        // during the frame that performs the transition.
-        this.particles.update(dt);
-      } else {
-        // Pickups
-        ITEMS_RUNTIME.updatePickups(dt, this);
-        // Combos, active world events, bounties and synergies
-        this.director.update(dt);
-        // Particles
-        this.particles.update(dt);
-
-        // Check death only while still in the active gameplay state.
-        if (this.state === GAME_STATE.PLAYING && !this.player.alive) {
-          this.transitionToGameOver();
-        }
-      }
-    } else if (this.state === GAME_STATE.STAGE_COMPLETE) {
-      // Keep the arena visible, but fully pause combat until the player
-      // advances. Updating enemies here could apply contact damage while the
-      // player is unable to respond.
-      this.particles.update(dt);
-      // Camera still tracks player for context
-      const tx = this.player.x - this.vw / 2;
-      const ty = this.player.y - this.vh / 2;
-      this.cam.x = Utils.lerp(this.cam.x, tx, 0.1);
-      this.cam.y = Utils.lerp(this.cam.y, ty, 0.1);
-    } else if (this.state === GAME_STATE.LEVEL_UP) {
-      // Pause world but render it
-      this.particles.update(dt);
-    } else if (this.state === GAME_STATE.MENU || this.state === GAME_STATE.HELP || this.state === GAME_STATE.SETTINGS) {
-      // Animate menu background subtly
-      this.cam.x += dt * 20;
-    } else if (this.state === GAME_STATE.SHOP || this.state === GAME_STATE.GAME_OVER ||
-               this.state === GAME_STATE.VICTORY || this.state === GAME_STATE.PAUSED) {
-      this.particles.update(dt);
-    }
+    const handler = GAME_STATE_HANDLERS[this.state];
+    if (handler && handler.update) handler.update(this, dt);
   }
 
   // ===== Rendering =====
@@ -629,34 +521,11 @@ class Game {
       this.renderMenuBackground();
     }
 
-    // UI overlay
+    // UI overlay (per-state)
     this.ctx._hover = this.mouseLogical;
     this.ctx._mouse = this.mouseLogical;
-    if (this.state === GAME_STATE.MENU) UI.drawMainMenu(ctx, this);
-    else if (this.state === GAME_STATE.HELP) UI.drawHelp(ctx, this);
-    else if (this.state === GAME_STATE.SETTINGS) UI.drawSettings(ctx, this);
-    else if (this.state === GAME_STATE.PLAYING) UI.drawHUD(ctx, this);
-    else if (this.state === GAME_STATE.LEVEL_UP) {
-      UI.drawHUD(ctx, this);
-      UI.drawLevelUp(ctx, this);
-    }
-    else if (this.state === GAME_STATE.STAGE_COMPLETE) {
-      UI.drawHUD(ctx, this);
-      UI.drawStageComplete(ctx, this);
-    }
-    else if (this.state === GAME_STATE.SHOP) {
-      // A shop opened after a stage keeps the run visible behind it. The
-      // main-menu Forge has no StageManager yet, so drawing the stage HUD
-      // would dereference a missing stage and abort the frame.
-      if (!menuForge) UI.drawHUD(ctx, this);
-      UI.drawShop(ctx, this);
-    }
-    else if (this.state === GAME_STATE.GAME_OVER) UI.drawGameOver(ctx, this);
-    else if (this.state === GAME_STATE.VICTORY) UI.drawVictory(ctx, this);
-    else if (this.state === GAME_STATE.PAUSED) {
-      UI.drawHUD(ctx, this);
-      UI.drawPause(ctx, this);
-    }
+    const handler = GAME_STATE_HANDLERS[this.state];
+    if (handler && handler.render) handler.render(this, ctx);
 
     if (this.state !== GAME_STATE.MENU && this.state !== GAME_STATE.HELP && this.state !== GAME_STATE.SETTINGS && !menuForge) {
       UI.drawDirectorOverlay(ctx, this);
