@@ -14,16 +14,6 @@
   const fatalRetry = document.getElementById('fatal-retry');
 
   function setBoot(t) { if (bootText) bootText.textContent = t; }
-  function computeMaxCoins() {
-    let total = 0;
-    for (const upgrade of SHOP_UPGRADES) {
-      for (let level = 0; level < upgrade.max; level++) {
-        total += Math.floor(upgrade.cost * (1 + level * 0.5));
-      }
-    }
-    return Math.max(1000, Math.floor(total * 1.5));
-  }
-  const MAX_TOTAL_COINS = computeMaxCoins();
   function showFatal(message = 'An unexpected error stopped the game safely.') {
     if (fatalMessage) fatalMessage.textContent = message;
     fatalScreen?.classList.remove('hidden');
@@ -66,18 +56,7 @@
 
   // Load persistent state
   try {
-    let save = await SDK.load('saveData', null);
-    if (!save || save.version !== 1) {
-      const total = await SDK.load('totalCoins', 0);
-      const max = await SDK.load('maxStageReached', 0);
-      save = { version: 1, totalCoins: total, maxStageReached: max, shopLevels: {} };
-    }
-    const loadedCoins = Math.floor(Number(save.totalCoins) || 0);
-    game.run.totalCoins = Utils.clamp(loadedCoins, 0, MAX_TOTAL_COINS);
-    game.run.maxStageReached = Utils.clamp(
-      Math.floor(Number(save.maxStageReached) || 0), 0, STAGES.length - 1
-    );
-    game.run.shopLevels = game.sanitizeShopLevels(save.shopLevels);
+    await game.meta.load();
   } catch (e) {
     console.warn('Save load failed:', e);
   }

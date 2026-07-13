@@ -76,14 +76,10 @@ class Game {
     this.time = 0;
     this.settings = this.loadSettings();
 
-    // Persistent meta
-    this.run = {
-      totalCoins: 0,
-      maxStageReached: 0,
-      shopLevels: {}
-    };
+    // Persistent meta (coins / stage / shop upgrades). `run` is kept as an
+    // alias to `meta.data` so existing UI and tests do not all change at once.
+    this.meta = new MetaProgress();
 
-    // World state
     this.player = null;
     this.stage = null;
     this.enemies = [];
@@ -175,43 +171,24 @@ class Game {
   }
 
   // ===== State management =====
+  // `run` aliases `meta.data`. The setter exists so callers that replace the
+  // object (e.g. test fixtures) stay in sync, and `meta` is created lazily when
+  // the constructor was bypassed.
+  get run() {
+    if (!this.meta) this.meta = new MetaProgress();
+    return this.meta.data;
+  }
+  set run(value) {
+    if (!this.meta) this.meta = new MetaProgress();
+    this.meta.data = value;
+  }
+
   loadSettings() {
-    const defaults = {
-      master: 0.72,
-        music: 0.78,
-        lastMusic: 0.78,
-        sfx: 0.85,
-        ambience: 0.45,
-        reducedAudio: false,
-        monoAudio: false,
-        criticalCues: false,
-        screenShake: 0.75,
-      particles: 1,
-      eventIntensity: 1,
-      damageNumbers: true,
-      highContrast: false
-    };
-    try {
-      const saved = JSON.parse(localStorage.getItem('gemquest_settings') || '{}');
-      return {
-        ...defaults,
-        ...saved,
-        master: Utils.clamp(Number(saved.master ?? defaults.master), 0, 1),
-        music: Utils.clamp(Number(saved.music ?? defaults.music), 0, 1),
-          lastMusic: Utils.clamp(Number(saved.lastMusic ?? saved.music ?? defaults.lastMusic), 0, 1),
-          sfx: Utils.clamp(Number(saved.sfx ?? defaults.sfx), 0, 1),
-          ambience: Utils.clamp(Number(saved.ambience ?? defaults.ambience), 0, 1),
-        screenShake: Utils.clamp(Number(saved.screenShake ?? defaults.screenShake), 0, 1),
-        particles: Utils.clamp(Number(saved.particles ?? defaults.particles), 0, 1),
-        eventIntensity: Utils.clamp(Number(saved.eventIntensity ?? defaults.eventIntensity), 0, 1)
-      };
-    } catch (_) {
-      return defaults;
-    }
+    return SettingsStore.load();
   }
 
   saveSettings() {
-    try { localStorage.setItem('gemquest_settings', JSON.stringify(this.settings)); } catch (_) {}
+    SettingsStore.save(this.settings);
   }
 
   applySettings() {
@@ -292,9 +269,7 @@ class Game {
     // the same balance and upgrade data without spawning a stage.
     if (!this.player) {
       this.player = new Player(0, 0);
-      this.player.totalCoins = this.run.totalCoins;
-      this.player.coins = this.run.totalCoins;
-      this.player.shopLevels = { ...this.run.shopLevels };
+      this.meta.applyToPlayer(this.player);
     }
   }
   closeShop() {
@@ -305,9 +280,7 @@ class Game {
     Audio.resume();
     this.player = new Player(0, 0);
     // Permanent currency and upgrades carry into every run.
-    this.player.totalCoins = this.run.totalCoins;
-    this.player.shopLevels = { ...this.run.shopLevels };
-    this.player.coins = this.run.totalCoins;
+    this.meta.applyToPlayer(this.player);
     this.reviveUsed = false;
     this.adPending = false;
     this.fatalError = null;
@@ -364,7 +337,7 @@ class Game {
     this.player.totalCoins = Math.max(0, this.player.totalCoins - cost);
     this.player.shopLevels[u.id] = lvl + 1;
     this.shopPurchaseFx = { id: u.id, startedAt: this.time };
-    this.run.shopLevels = { ...this.player.shopLevels };
+    this.run.shopLevels = SaveSchema.sanitizeShopLevels(this.player.shopLevels);
     this.syncMetaFromPlayer();
     this.persistMeta();
     Audio.play?.('reward.reveal', { rarity: 'rare', x: this.player.x, y: this.player.y });
@@ -479,26 +452,11 @@ class Game {
   }
 
   async persistMeta() {
-    await SDK.save('saveData', {
-      version: 1,
-      totalCoins: Math.max(0, Math.floor(this.run.totalCoins || 0)),
-      maxStageReached: Utils.clamp(Math.floor(this.run.maxStageReached || 0), 0, STAGES.length - 1),
-      shopLevels: this.sanitizeShopLevels(this.run.shopLevels)
-    });
-  }
-
-  sanitizeShopLevels(levels) {
-    const clean = {};
-    for (const upgrade of SHOP_UPGRADES) {
-      clean[upgrade.id] = Utils.clamp(Math.floor(Number(levels?.[upgrade.id]) || 0), 0, upgrade.max);
-    }
-    return clean;
+    await this.meta.save();
   }
 
   syncMetaFromPlayer() {
-    if (!this.player) return;
-    this.run.totalCoins = Math.max(0, Math.floor(this.player.totalCoins || 0));
-    this.run.shopLevels = this.sanitizeShopLevels(this.player.shopLevels);
+    this.meta.syncFromPlayer(this.player);
   }
 
   completeStageIfReady() {

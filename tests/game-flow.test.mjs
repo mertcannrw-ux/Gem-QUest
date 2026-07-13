@@ -92,7 +92,7 @@ function buildContext() {
   };
   const ctx = loadScripts([
     'js/utils.js',
-    'js/core/constants.js',
+    'js/platform/settings-store.js', 'js/platform/save-schema.js', 'js/platform/meta-progress.js', 'js/core/constants.js',
     'js/core/game-state.js',
     'js/core/lifecycle.js',
     'js/data.js',

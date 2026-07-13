@@ -11,6 +11,7 @@ function buildGameContext() {
     log,
     SDK: {
       gameplayStart() {}, gameplayStop() {}, gameLose() {}, happyTime() {},
+      async load(key, fallback) { return fallback; },
       async save(key, value) { log.push(['save', key, value]); return true; },
       showAdRewarded() { return Promise.resolve({ completed: false }); },
       isAdInProgress() { return false; }
@@ -19,7 +20,7 @@ function buildGameContext() {
     window: {},
     performance: { now: () => 0 }
   };
-  const ctx = loadScripts(['js/utils.js', 'js/data.js', 'js/game.js'], additions);
+  const ctx = loadScripts(['js/utils.js', 'js/data.js', 'js/core/constants.js', 'js/core/game-state.js', 'js/core/lifecycle.js', 'js/platform/settings-store.js', 'js/platform/save-schema.js', 'js/platform/meta-progress.js', 'js/game.js'], additions);
   vm.runInContext(`
     function makeGame() {
       const g = Object.create(Game.prototype);
@@ -39,11 +40,10 @@ function run(ctx, code) {
   return vm.runInContext(code, ctx);
 }
 
-test('sanitizeShopLevels clamps out-of-range and unknown upgrades', () => {
+test('SaveSchema.sanitizeShopLevels clamps out-of-range and unknown upgrades', () => {
   const { ctx } = buildGameContext();
   const result = run(ctx, `(function () {
-    const g = makeGame();
-    const clean = g.sanitizeShopLevels({ hp: 999, speed: 99, unknown: 7 });
+    const clean = SaveSchema.sanitizeShopLevels({ hp: 999, speed: 99, unknown: 7 });
     return { hp: clean.hp, speed: clean.speed, unknown: clean.unknown };
   })()`);
   assert.equal(result.hp, 10);
@@ -137,4 +137,62 @@ test('SDK handles a payload missing required fields', async () => {
   // The adapter returns the stored payload as-is; downstream sanitization is
   // the Game's responsibility (covered by sanitizeShopLevels / persistMeta).
   assert.equal(value.totalCoins, 'not-a-number');
+});
+
+test('SaveSchema.sanitizeSave clamps negative coins and out-of-range stage', () => {
+  const { ctx } = buildGameContext();
+  const result = run(ctx, `(function () {
+    return SaveSchema.sanitizeSave({ totalCoins: -50, maxStageReached: 999, shopLevels: { hp: 5 } });
+  })()`);
+  assert.equal(result.version, 1);
+  assert.equal(result.totalCoins, 0);
+  assert.equal(result.maxStageReached, run(ctx, 'STAGES.length') - 1);
+  assert.equal(result.shopLevels.hp, 5);
+});
+
+test('SaveSchema.sanitizeSave tolerates corrupt input', () => {
+  const { ctx } = buildGameContext();
+  const result = run(ctx, `(function () {
+    return SaveSchema.sanitizeSave('not-an-object');
+  })()`);
+  assert.equal(result.version, 1);
+  assert.equal(result.totalCoins, 0);
+  assert.equal(result.maxStageReached, 0);
+});
+
+test('MetaProgress.load migrates legacy top-level save keys', async () => {
+  const { ctx } = buildGameContext();
+  const result = await run(ctx, `(async function () {
+    const m = new MetaProgress();
+    const origLoad = SDK.load;
+    SDK.load = async (key, fb) => {
+      if (key === 'saveData') return null;
+      if (key === 'totalCoins') return 30;
+      if (key === 'maxStageReached') return 2;
+      return fb;
+    };
+    await m.load();
+    SDK.load = origLoad;
+    return { coins: m.data.totalCoins, stage: m.data.maxStageReached };
+  })()`);
+  assert.equal(result.coins, 30);
+  assert.equal(result.stage, 2);
+});
+
+test('MetaProgress.save persists a clamped, versioned envelope', async () => {
+  const { ctx, log } = buildGameContext();
+  const result = await run(ctx, `(async function () {
+    const m = new MetaProgress();
+    m.data.totalCoins = -5;
+    m.data.maxStageReached = 999;
+    m.data.shopLevels = { hp: 50, speed: 99 };
+    await m.save();
+    return true;
+  })()`);
+  const saved = log.find((entry) => Array.isArray(entry) && entry[0] === 'save')[2];
+  assert.equal(saved.version, 1);
+  assert.equal(saved.totalCoins, 0);
+  assert.equal(saved.maxStageReached, run(ctx, 'STAGES.length') - 1);
+  assert.equal(saved.shopLevels.hp, 10);
+  assert.equal(saved.shopLevels.speed, 6);
 });
