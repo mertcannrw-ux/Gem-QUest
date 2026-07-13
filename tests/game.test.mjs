@@ -260,7 +260,7 @@ test('mutations scale enemy bodies and rare mutations expose unique mechanics', 
 
 test('player stat modifiers distinguish flat and percentage damage', () => {
   const ctx = loadScripts(
-    ['js/utils.js', 'js/core/random.js', 'js/data.js', 'js/player.js'],
+    ['js/utils.js', 'js/core/random.js', 'js/data.js', 'js/player.js', 'js/combat/player-combat.js', 'js/combat/drone-system.js'],
     { Audio: { shoot() {} }, Input: { getMoveAxis: () => ({ x: 0, y: 0 }), mouse: {} } }
   );
   const stats = vm.runInContext(`
@@ -280,7 +280,7 @@ test('player stat modifiers distinguish flat and percentage damage', () => {
 
 test('combat drones maintain a visible orbit position and fire from their model', () => {
   const ctx = loadScripts(
-    ['js/utils.js', 'js/core/random.js', 'js/data.js', 'js/player.js'],
+    ['js/utils.js', 'js/core/random.js', 'js/data.js', 'js/player.js', 'js/combat/player-combat.js', 'js/combat/drone-system.js'],
     {
       Audio: { shoot() {}, shootBig() {}, deny() {} },
       Input: {
@@ -339,7 +339,7 @@ test('combat drones maintain a visible orbit position and fire from their model'
 
 test('item stacks are capped and ad revive restores a dead player', () => {
   const ctx = loadScripts(
-    ['js/utils.js', 'js/core/random.js', 'js/data.js', 'js/player.js'],
+    ['js/utils.js', 'js/core/random.js', 'js/data.js', 'js/player.js', 'js/combat/player-combat.js', 'js/combat/drone-system.js'],
     { Audio: { shoot() {} }, Input: { getMoveAxis: () => ({ x: 0, y: 0 }), mouse: {} } }
   );
   const result = vm.runInContext(`
@@ -359,7 +359,7 @@ test('item stacks are capped and ad revive restores a dead player', () => {
 
 test('large XP pickups queue every earned level', () => {
   const ctx = loadScripts(
-    ['js/utils.js', 'js/core/random.js', 'js/data.js', 'js/player.js'],
+    ['js/utils.js', 'js/core/random.js', 'js/data.js', 'js/player.js', 'js/combat/player-combat.js', 'js/combat/drone-system.js'],
     { Audio: { shoot() {} }, Input: { getMoveAxis: () => ({ x: 0, y: 0 }), mouse: {} } }
   );
   const result = vm.runInContext(`

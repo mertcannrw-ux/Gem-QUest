@@ -2,7 +2,7 @@
 
 > Last updated: **2026-07-13** · based on commit **`43419d3`** (branch `codex/major-refactor`)
 > Authoritative plan: **`REFACTOR_PLAN.md`** (read it before doing any phase).
-> Status: **113 tests green · `npm run verify` green · 13 of 17 plan phases done (one extra).**
+> Status: **115 tests green · `npm run verify` green · 14 of 17 plan phases done (one extra).**
 
 ---
 
@@ -12,7 +12,7 @@ We are mid-way through the behavior-preserving refactor of `js/game.js` (and a f
 other large files) into focused subsystems, per `REFACTOR_PLAN.md`. Every phase so
 far is committed, runs, and keeps `npm run verify` green.
 
-- **You can keep going with the next concrete step: start plan Phase 11** — split player combat + drones into `js/combat/{player-combat,drone-system}.js`. See `REFACTOR_PLAN.md` Phase 11.
+- **You can keep going with the next concrete step: start plan Phase 12** — split audio behind the `Audio` facade into `js/audio/{audio-context,mixer,music,ambience,sfx,audio}.js`. See `REFACTOR_PLAN.md` Phase 12.
 - **Golden rule:** small move-and-delegate edits, keep tests green, one phase per
   commit. Never change gameplay/balance/art/visuals. No ES modules (classic
   `<script>` + shared globals only).
@@ -70,7 +70,14 @@ js/
     lifecycle.js                      ← new
     random.js                         ← new (shared rng + hash)
   data.js
-  combat/                             ← new (Phase 10)
+  combat/                             ← new (Phase 10/11)
+    projectile.js                    ← new (Projectile)
+    enemy.js                        ← new (Enemy entity/lifecycle/render)
+    enemy-ai.js                     ← new (shoot + rare mutation)
+    boss-ai.js                      ← new (boss patterns + BOSS_AI map)
+    mutations.js                    ← new (applyEliteModifier)
+    player-combat.js                ← new (Phase 11, auto-attack + fire)
+    drone-system.js                 ← new (Phase 11, companion firing)
     projectile.js                    ← new (Projectile)
     enemy.js                        ← new (Enemy entity/lifecycle/render)
     enemy-ai.js                     ← new (shoot + rare mutation)
@@ -243,13 +250,14 @@ planned extraction:
 
 ---
 
-## 6. Next concrete step — start plan Phase 11 (player combat + drones)
+## 6. Next concrete step — start plan Phase 12 (audio facade split)
 
-Split `Player` combat from progression/state per `REFACTOR_PLAN.md` Phase 11:
-`js/combat/player-combat.js` (target selection + projectile construction) and
-`js/combat/drone-system.js` (companion orbiting/firing). Keep progression/state on `Player`;
-preserve the `player.drones` getter. Move one responsibility at a time and keep `Player.damage`
-/ `takeDamage` / movement on the entity. Keep `npm run verify` green, one file per commit.
+Split `Audio` behind its facade per `REFACTOR_PLAN.md` Phase 12:
+`js/audio/{audio-context,mixer,music,ambience,sfx,audio}.js`. Inventory `Audio.*`
+calls first, keep the public `Audio` contract, add a facade contract test, and make
+`Audio.sync(game)` build a scene description rather than reading the whole `game`.
+Preserve the mute-around-rewarded-ad behavior. Keep `npm run verify` green, one file
+per commit.
 
 ---
 
@@ -261,7 +269,7 @@ preserve the `player.drones` getter. Move one responsibility at a time and keep 
 | 8 | State handlers | registry in `js/core/game-state.js` | ✅ DONE. `Game.update`/`render`/`handleClick`/`handleKey` delegate to `GAME_STATE_HANDLERS[state]`; `transitionTo` calls `exit`→assign→`enter`. Lootbox/level-up click routing moved into handlers. |
 | 9 | Run director + world events | `js/run/{combo-system,bounty-system,synergies,run-director}.js`, `js/run/events/*` | ✅ DONE (prototype-augmentation split; `mechanics.js` keeps only mutation data + `applyEliteModifier`; `tests/run-director.test.mjs` drives every event). |
 | 10 | Enemy / boss / mutation / projectile | `js/combat/{enemy,enemy-ai,boss-ai,mutations,projectile}.js` | ✅ DONE. `Projectile`→projectile.js; `Enemy` entity in enemy.js (update dispatches to prototype methods); enemy-ai.js (shoot + rare mutation), boss-ai.js (boss patterns + `BOSS_AI` map), mutations.js (`applyEliteModifier`). `tests/projectile.test.mjs` added. |
-| 11 | Player combat + drones | `js/combat/{player-combat,drone-system}.js` | Keep progression/state on `Player`; move target selection + projectile construction + drones out. Preserve `player.drones` getter. |
+| 11 | Player combat + drones | `js/combat/{player-combat,drone-system}.js` | ✅ DONE. `Player.update` delegates to `autoAttack` (player-combat.js) and `updateDrones` (drone-system.js); progression/state/movement/damage stay on `Player`. `tests/player-combat.test.mjs` added. |
 | 12 | Audio facade split | `js/audio/{audio-context,mixer,music,ambience,sfx,audio}.js` | Inventory `Audio.*` calls first; facade contract test; `Audio.sync(game)` builds a scene description, not the whole `game`. Preserve mute-around-rewarded-ad. |
 | 13 | Sprite cache ↔ catalogs | `js/render/sprite.js`, `js/render/catalogs/*` | Add pixel-checksum test first; move one catalog at a time; compare all checksums. Keep `Sprite.buildAll()`. Keep `ItemArt` separate. |
 | 14 | Content data split | `js/content/{items,enemies,stages,shop,lootboxes,index}.js` | Keep IDs + array order + globals (`ITEMS`, `ENEMIES`, `STAGES`, `SHOP_UPGRADES`, `LOOTBOX`, `RARITY`, `pickItemRewards`, `xpToLevel`). Do not rename/renumber. |

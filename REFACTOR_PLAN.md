@@ -1091,6 +1091,13 @@ js/combat/drone-system.js
 1. `refactor: extract player combat`
 2. `refactor: extract drone system`
 
+> **Status: ✅ COMPLETE** (uncommitted — see handoff). `Player.update` now delegates to
+`Player.prototype.autoAttack` (target selection + tempest fan + `fire`) in
+`js/combat/player-combat.js` and `Player.prototype.updateDrones` in
+`js/combat/drone-system.js`; progression/state, movement, and damage handling stay
+on `Player`. `tests/player-combat.test.mjs` covers auto-attack targeting and drone
+firing. `npm run verify` stays green (115 tests).
+
 ## 19. Phase 12 — Split Audio Behind the Existing `Audio` Facade
 
 ### Goal
