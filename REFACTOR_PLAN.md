@@ -728,6 +728,12 @@ js/world/menu-background-renderer.js
 
 ## 14. Phase 7 — Split the UI Behind the Existing `UI` Facade
 
+> **Status: ✅ COMPLETE** (committed in this session). `js/ui.js` is now a 34-line
+> facade; `js/ui/ui-core.js` holds primitives + the click registry; `js/ui/screens/*`
+> holds the 11 screens (the plan listed 10 — `director-overlay.js` was added as the
+> 11th). `UI.draw*` remain delegates; `UI.beginFrame`/`clearButtons`/`handleClick`
+> forward to `UICore`. Acceptance met; `npm run verify` green.
+
 ### Goal
 
 Turn `ui.js` into a stable facade and registry rather than a 1,395-line
@@ -737,16 +743,18 @@ implementation.
 
 ```text
 js/ui/ui-core.js
-js/ui/hud.js
+js/ui.js                      (facade — was the 1,395-line implementation)
 js/ui/screens/main-menu.js
 js/ui/screens/help.js
 js/ui/screens/settings.js
+js/ui/screens/hud.js
 js/ui/screens/level-up.js
 js/ui/screens/stage-complete.js
 js/ui/screens/shop.js
 js/ui/screens/game-over.js
 js/ui/screens/pause.js
 js/ui/screens/victory.js
+js/ui/screens/director-overlay.js
 ```
 
 ### `UICore` responsibilities

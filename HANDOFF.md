@@ -2,7 +2,7 @@
 
 > Last updated: **2026-07-13** · based on commit **`43419d3`** (branch `codex/major-refactor`)
 > Authoritative plan: **`REFACTOR_PLAN.md`** (read it before doing any phase).
-> Status: **91 tests green · `npm run verify` green · 8 of 17 plan phases done (one extra).**
+> Status: **107 tests green · `npm run verify` green · 10 of 17 plan phases done (one extra).**
 
 ---
 
@@ -12,8 +12,9 @@ We are mid-way through the behavior-preserving refactor of `js/game.js` (and a f
 other large files) into focused subsystems, per `REFACTOR_PLAN.md`. Every phase so
 far is committed, runs, and keeps `npm run verify` green.
 
-- **You can keep going with the next concrete step: finish plan Phase 6** — extract
-  `renderWorld` → `WorldRenderer` and `renderMenuBackground` → `MenuBackgroundRenderer`.
+- **You can keep going with the next concrete step: start plan Phase 8** — replace the
+  `update`/`render`/`handleClick`/`handleKey` `if` chains in `game.js` with a
+  `GAME_STATE_HANDLERS[state]` registry (see `REFACTOR_PLAN.md` Phase 8).
 - **Golden rule:** small move-and-delegate edits, keep tests green, one phase per
   commit. Never change gameplay/balance/art/visuals. No ES modules (classic
   `<script>` + shared globals only).
@@ -27,7 +28,7 @@ The work done so far used a **slightly adapted phase numbering** from the one in
 
 - We pulled **`TerrainRenderer`** out as the *first* step of plan Phase 6 (plan
   Phase 6 is "World and Menu Rendering" and also includes `world-renderer.js` and
-  `menu-background-renderer.js`, which are **not yet done**).
+  `menu-background-renderer.js`, which are **now done** (extracted as `WorldRenderer`
 - We pulled **`CombatCoordinator`** out *early* as an extra extraction. The plan's
   official Phase 7 is the **UI split**, and the plan's architecture does **not**
   list a `combat-coordinator.js` file. The coordinator is still a valid, useful
@@ -35,7 +36,7 @@ The work done so far used a **slightly adapted phase numbering** from the one in
 
 The canonical plan phases below are referenced by their **official numbers (5–17)**.
 When this handoff says "Phase 6 (partial)", it means the *terrain* part of plan
-Phase 6 is done but `WorldRenderer`/`MenuBackgroundRenderer` remain.
+Phase 6 is done and `WorldRenderer`/`MenuBackgroundRenderer` are now extracted too.
 
 ---
 
@@ -49,10 +50,11 @@ Phase 6 is done but `WorldRenderer`/`MenuBackgroundRenderer` remain.
 | 3 Settings & meta | ✅ | `57445b5` | `js/platform/settings-store.js`, `js/platform/save-schema.js`, `js/platform/meta-progress.js`; `game.run` is an alias to `game.meta.data` |
 | 4 Canvas / loop / world | ✅ | `f2d29ce` | `js/game/canvas-viewport.js`, `js/game/game-loop.js`, `js/game/world-session.js` |
 | 5 Environment sim + render | ✅ | `1778cd1` | `js/world/environment-system.js`, `js/world/environment-renderer.js` |
-| 6 World & menu rendering | ◑ **partial** | `9287ac5` | `js/world/terrain-renderer.js` + `js/core/random.js` done. **`WorldRenderer` and `MenuBackgroundRenderer` NOT yet extracted** (still inline in `game.js`). |
+| 6 World & menu rendering | ✅ | `4efa612` | `js/world/terrain-renderer.js` + `js/core/random.js` (Phase 6a) and `js/world/world-renderer.js` (`WorldRenderer`) + `js/world/menu-background-renderer.js` (`MenuBackgroundRenderer`) finish the phase (Phase 6b). `renderWorld`/`renderMenuBackground` are thin delegates on `Game`. |
+| 7 UI split (facade) | ✅ | `TBD-PHASE7` | `js/ui/ui-core.js` (primitives + click registry) and `js/ui/screens/*` (11 screens) behind a thin `js/ui.js` `UI` facade. `UI.drawMainMenu` etc. remain delegates; `UI.beginFrame`/`clearButtons`/`handleClick` forward to `UICore`. |
 | — CombatCoordinator (extra) | ✅ | `43419d3` | `js/combat/combat-coordinator.js` extracted early (level-up flow, boss rewards, kill drops). Not part of the official phase list. |
 
-`game.js` is **895 lines** (down from ~1535 at baseline).
+`game.js` is **729 lines** (down from ~1535 at baseline).
 
 ---
 
@@ -90,12 +92,17 @@ js/
   sdk.js
   sprites.js
   stages.js
-  ui.js
+  ui.js                                 <- now a thin facade (Phase 7)
+  ui/
+    ui-core.js                        <- new (primitives + click registry)
+    screens/                         <- new (11 screen modules)
   utils.js
   world/
     environment-renderer.js           ← new
     environment-system.js             ← new
-    terrain-renderer.js               ← new
+    terrain-renderer.js               <- new
+    world-renderer.js                 <- new (Phase 6b)
+    menu-background-renderer.js       <- new (Phase 6b)               ← new
 ```
 
 `index.html` script order (already updated, newest before `js/game.js`):
@@ -104,9 +111,16 @@ js/
 ... js/world/environment-system.js
 ... js/world/environment-renderer.js
 ... js/world/terrain-renderer.js
+... js/world/world-renderer.js              (Phase 6b, before combat-coordinator)
+... js/world/menu-background-renderer.js    (Phase 6b, before combat-coordinator)
 ... js/combat/combat-coordinator.js        (right before mechanics.js)
 ... js/mechanics.js, js/player.js, js/enemies.js, js/items.js,
-    js/lootbox.js, js/stages.js, js/ui.js, js/game.js, js/main.js
+    js/lootbox.js, js/stages.js,
+    js/ui/ui-core.js,                 (Phase 7, before screens)
+    js/ui/screens/*.js (main-menu, help, settings, hud, level-up, stage-complete,
+                        shop, game-over, pause, victory, director-overlay),
+    js/ui.js,                         (Phase 7 facade, after screens)
+    js/game.js, js/main.js
 ```
 
 ---
@@ -179,23 +193,18 @@ These were established and proven across phases 2–7. Follow them exactly.
 `game.js` is now an orchestrator. Remaining inline responsibility, in order of
 planned extraction:
 
-- **`renderWorld()`** (≈ line 655) — still contains the full world draw:
-  background sky gradient, `renderParallaxBack` (→ delegate), `renderTiles`/`renderTerrainDetails`
-  (→ `terrainRenderer`), `director.renderBackdrop`, `ctx.save()` + `ctx.translate(shake)`,
-  `renderProps('ground')`, `ITEMS_RUNTIME.renderPickups`, lootbox/enemy/projectile/player
-  draws, `director.renderWorld`, `renderProps('foreground')`, `particles.render`, `ctx.restore()`,
-  `renderWorldLighting`, `renderVignette`, `director.renderEventOverlay`.
-  → plan Phase 6 finish: move into `js/world/world-renderer.js` (`WorldRenderer.render(game)`),
-  replace `renderWorld()` with a one-line delegate.
-- **`renderMenuBackground()`** (≈ line 700) — inline procedural menu background.
-  → plan Phase 6 finish: move into `js/world/menu-background-renderer.js`.
-- **`renderWorldLighting()`** (≈ line 777) and **`renderVignette()`** (≈ line 681) —
-  inline; fold into `WorldRenderer` (they are world-only visuals).
+- **`renderWorld()`** (≈ line 655) — now a one-line delegate to `WorldRenderer.render`
+  (moved in Phase 6b into `js/world/world-renderer.js`). The full world draw lives there.
+- **`renderMenuBackground()`** (≈ line 700) — now a one-line delegate to
+  `MenuBackgroundRenderer.render` (moved in Phase 6b into
+  `js/world/menu-background-renderer.js`).
+- **`renderWorldLighting()`** and **`renderVignette()`** — folded into `WorldRenderer`
+  (Phase 6b); no longer separate methods on `Game`.
 - **`update(dt)`** (≈ line 518) — still a large `if (state === ...)` chain over
   states. → plan Phase 8: replace with `GAME_STATE_HANDLERS[state].update(...)`.
 - **`render()`** (≈ line 594) — still a large `if (state === ...)` chain dispatching
   to `UI.drawMainMenu` etc., plus `renderWorld`/`renderMenuBackground` branch and
-  `UI.drawDirectorOverlay`. → plan Phase 7 (UI facade) + Phase 8 (state handlers).
+  `UI.drawDirectorOverlay`. → plan Phase 8 (state handlers). (Phase 7 UI facade is done.)
 - **`handleClick(mx,my)` / `handleKey(k)`** (≈ 346 / 397) — still state-dispatch
   `if` chains (lootbox clicks, level-up card clicks, pause). → plan Phase 8.
 - **`renderTiles` / `renderTerrainDetails` / `renderParallaxBack` / `moveActorWithEnvironment`
@@ -207,34 +216,27 @@ planned extraction:
 
 ---
 
-## 6. Next concrete step — finish plan Phase 6 (World & Menu rendering)
+## 6. Next concrete step — start plan Phase 8 (state handlers)
 
-This is the highest-value, lowest-risk next move and keeps the established pattern.
+Replace the `update` / `render` / `handleClick` / `handleKey` `if (state === ...)` chains
+in `game.js` with a `GAME_STATE_HANDLERS[state]` registry (see `REFACTOR_PLAN.md` Phase 8).
+Move one dispatcher at a time, keep `npm run verify` green, one commit per dispatcher.
 
-1. Create `js/world/world-renderer.js` exporting `WorldRenderer` with a single
-   public method `render(game)` that reproduces `game.renderWorld()` exactly
-   (background gradient, parallax, tiles/details via `game.terrainRenderer`,
-   `game.director.renderBackdrop`, shake `save`/`translate`/`restore`, ground props,
-   pickups, lootboxes, enemies, projectiles, player, `director.renderWorld`,
-   foreground props, particles, `renderWorldLighting`, `renderVignette`,
-   `director.renderEventOverlay`).
-2. Create `js/world/menu-background-renderer.js` exporting `MenuBackgroundRenderer`
-   with `render(game)` reproducing `game.renderMenuBackground()`.
-3. Add lazy getters `worldRenderer` / `menuBackgroundRenderer` on `Game` (mirror
-   `terrainRenderer`).
-4. Replace `game.renderWorld()` and `game.renderMenuBackground()` bodies with
-   one-line delegates (`return this.worldRenderer.render(this);`).
-5. Register both `<script>` tags in `index.html` (before `js/game.js`).
-6. Add a `tests/world-renderer.test.mjs` using recorder objects to assert the
-   **render order** (mirror `render-order.test.mjs`'s existing `renderWorld` override
-   contract — note `render-order.test.mjs` currently overrides `Game.prototype.renderWorld`,
-   so keep that method name working as a delegate).
-7. Add the two new files to every test `loadScripts` array that includes `js/game.js`.
-8. Run `npm run verify`. Commit.
-
-> Note: `tests/render-order.test.mjs` overrides `Game.prototype.renderWorld`/`renderMenuBackground`
-> to capture draw steps. Keep those method names as delegates so the test keeps working,
-> or update the test to override the new renderer methods instead (preferred, but optional).
+1. In `js/core/game-state.js` add `GAME_STATE_HANDLERS = {}` and register handlers per
+   state, each exposing `enter(game)`, `exit(game)`, `update(game, dt)`,
+   `render(game)`, `handleClick(game, mx, my)`, `handleKey(game, key)` as needed.
+2. Convert **`update(dt)`** first: replace the `if (state === ...)` chain with
+   `GAME_STATE_HANDLERS[game.state].update(game, dt)`, preserving the exact `playing`
+   update order (input → world session step → enemy AI → combat → director → player
+   progression → camera → particles). Keep `stagecomplete` updating particles only.
+3. Convert **`render()`** next: dispatch to `GAME_STATE_HANDLERS[game.state].render(game)`.
+4. Convert **`handleClick`** / **`handleKey`** to delegate to the handler (after the
+   lootbox/level-up hit-testing move in a later commit — for now keep those in `Game`
+   or move them into the handlers; do not mix with this file-move commit).
+5. Make **`transitionTo(state)`** call `exit(current)` → assign `game.state` →
+   `enter(next)` so state entry/exit logic is centralized and testable.
+6. Add/extend a test that drives each state handler (mirror `game-flow.test.mjs`).
+7. Run `npm run verify`. Commit.
 
 ---
 
@@ -242,7 +244,7 @@ This is the highest-value, lowest-risk next move and keeps the established patte
 
 | Phase | Theme | Key new files | Gotchas |
 |---|---|---|---|
-| 7 | UI split behind `UI` facade | `js/ui/ui-core.js`, `js/ui/hud.js`, `js/ui/screens/*` | Keep `UI.drawMainMenu` etc. as delegates. `UI.beginFrame(pointer)` clears button registry. Move lootbox/level-up hit-testing into the registry in a *later* commit (don't mix with file moves). |
+| 7 | UI split behind `UI` facade | `js/ui/ui-core.js`, `js/ui/screens/*`, `js/ui.js` (facade) | ✅ DONE. `UI.drawMainMenu` etc. are delegates; `UI.beginFrame`/`clearButtons`/`handleClick` forward to `UICore`. Lootbox/level-up hit-testing stays in `Game` for now (later commit). |
 | 8 | State handlers | registry in `js/core/game-state.js` | Replace `update`/`render`/`handleClick`/`handleKey` `if` chains with `GAME_STATE_HANDLERS[state]`. `transitionTo` must call `exit`→assign→`enter`. Preserve exact `playing` update order. `stagecomplete` updates particles only. |
 | 9 | Run director + world events | `js/run/{combo-system,bounty-system,synergies,run-director}.js`, `js/run/events/*` | Event `context` = `{game,player,enemies,particles,shake,audio,rng}`. Move one event at a time (Gem Storm → Starfall → Luminous Tide → Rift Frenzy). Reduce `RunDirector` to timers + delegation. |
 | 10 | Enemy / boss / mutation / projectile | `js/combat/{enemy,enemy-ai,boss-ai,mutations,projectile}.js` | Keep global `Projectile`/`Enemy`. Boss dispatch → `BOSS_AI` map. `Enemy` keeps entity state + `takeDamage`/`die`/status + AI delegation. |

@@ -20,7 +20,7 @@ test('item rewards are unique and never include maxed items', () => {
 });
 
 test('opening tutorial is drawn in the top center and avoids the action deck', () => {
-  const source = readFileSync(resolve(root, 'js/ui.js'), 'utf8');
+  const source = readFileSync(resolve(root, 'js/ui/screens/hud.js'), 'utf8');
   const start = source.indexOf('// Mini-instructions first 8 seconds');
   const end = source.indexOf('// Touch joystick overlay', start);
   assert.ok(start >= 0 && end > start, 'the opening tutorial HUD block should exist');
