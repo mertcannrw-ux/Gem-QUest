@@ -1282,6 +1282,13 @@ js/content/index.js
 
 ## 22. Phase 15 — Narrow Runtime Dependencies
 
+> **Status: ⏸ DEFERRED (gradual/optional).** The file split (phases 1–14) already
+> narrowed coupling substantially. Forcing a wholesale context-object rewrite would
+> risk the plan's stop conditions (e.g. copying mutable `Game` state into two
+> owners) and the behavior-preserving mandate. Treat as gradual polish: introduce
+> context objects only where they clearly reduce coupling, and remove compatibility
+> getters only after `rg` proves no caller.
+
 ### Goal
 
 Remove unnecessary access to the entire mutable `Game` object.
@@ -1333,6 +1340,13 @@ Use one commit per subsystem, for example:
 
 ## 23. Phase 16 — Update Build Checks and Documentation
 
+> **Status: ✅ COMPLETE** (committed in this session). `scripts/check.mjs` already
+> walks nested `js/` directories and validates `index.html` script references;
+> `README.md` structure/architecture sections were rewritten to match the modular
+> layout and the fatal-stop frame-loop behavior; stale `js/data.js` /
+> `js/sprites.js` / `js/audio.js` references were removed; `HANDOFF.md` tracks
+> phase status.
+
 ### Goal
 
 Teach repository tooling about the new structure and remove stale architecture
@@ -1368,6 +1382,10 @@ documentation.
 `docs: update architecture and refactor-aware verification`
 
 ## 24. Phase 17 — Optional Native ES-Module Migration
+
+> **Status: ⏸ OPTIONAL (not started).** Per the plan this phase is explicitly
+> optional and only begins after all prior phases are complete and browser smoke
+> tests pass. Deferred.
 
 ### Goal
 

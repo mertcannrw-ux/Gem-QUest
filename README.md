@@ -55,33 +55,39 @@ GitHub Actions runs the same command for every pull request and push to `main`.
 
 ## 📂 Project Structure
 
+The runtime is split into focused classic-script modules that share globals
+(no ES modules). `index.html` is the authoritative script-load order.
+
 ```
-Gem-QUest/
-├── index.html              Entry point + CrazySDK loader
+Gem-Quest/
+├── index.html              Entry point + CrazySDK loader (script order is authoritative)
 ├── styles.css              Boot screen + 16:9 letterbox
 ├── serve.js                Tiny Node.js dev server
 ├── js/
-│   ├── utils.js            Math, RNG, shake, formatters
-│   ├── sdk-loader.js       Non-blocking CrazyGames SDK bootstrap
-│   ├── sdk.js              CrazyGames wrapper + resilient persistence
-│   ├── audio.js            Procedural Web Audio SFX
-│   ├── input.js            Keyboard (WASD+ZQSD) + touch joystick
-│   ├── particles.js        Typed-array particle system
-│   ├── sprites.js          ★ Procedural pixel-art sprite cache
-│   ├── data.js             ★ 25+ items, 8 enemies, 4 bosses, 4 stages
-│   ├── mechanics.js        RunDirector, elite modifiers, item synergies, world events
+│   ├── main.js             Boot + save restore
+│   ├── game.js             Thin orchestrator: loop wiring, camera, state-machine delegate
 │   ├── player.js           Player + auto-attack + item effects
-│   ├── enemies.js          Enemy AI + 4 boss patterns
 │   ├── items.js            XP gem / coin pickup logic
 │   ├── lootbox.js          Boss reward UI
-│   ├── stages.js           Wave manager + boss spawner
-│   ├── ui.js               Menus, HUD, level-up, shop, game over
-│   ├── game.js             Master loop, camera, state machine
-│   └── main.js             Boot + save restore
-└── HANDOFF.md              Detailed handoff document
+│   ├── mechanics.js        Mutation data + applyEliteModifier
+│   ├── input.js            Keyboard (WASD+ZQSD) + touch joystick
+│   ├── particles.js        Typed-array particle system
+│   ├── item-art.js         Relic/reward art (separate API from Sprite)
+│   ├── audio/              Audio facade + audio-context, mixer, music, ambience, sfx
+│   ├── combat/             Projectile, Enemy, enemy AI, boss AI, mutations, player combat, drones, coordinator
+│   ├── content/            items, enemies, stages, shop, lootboxes (game content data)
+│   ├── core/               constants, game-state, lifecycle, random
+│   ├── game/               canvas-viewport, game-loop, world-session
+│   ├── platform/           settings-store, save-schema, meta-progress
+│   ├── render/             sprite engine + sprite catalogs
+│   ├── run/                run-director + combo/bounty/synergies/event-common + events/*
+│   ├── ui/                 ui-core + screens/* (UI facade over focused screens)
+│   └── world/              terrain/world/menu renderers + environment system/renderer
+└── HANDOFF.md              Detailed handoff document (authoritative refactor status)
 ```
 
-`★` = largest content files. New content goes here.
+`Game` primarily wires services and state handlers; `UI`, `Audio`, `Sprite`,
+and `RunDirector` are facades/coordinators over the focused modules above.
 
 ## 🏗️ Architecture
 
@@ -96,23 +102,30 @@ If/when you switch to real art:
 - Replace `Sprite.get(id).image` lookups with preloaded `Image` objects
 - Keep the `Sprite.draw(ctx, id, x, y, opts)` API — only the cache internals change
 
-### Why is `game.js` so big?
+### `game.js` is now a thin orchestrator
 
-It's the master state machine. Possible refactor: split `state` into a dedicated `StateMachine` class with `enter`/`exit`/`update`/`render` per state. Only worth it if you add more states (settings, leaderboard, profile, etc.).
+`game.js` was split into focused subsystems during the refactor. It now owns the
+master loop, camera, and the `GAME_STATE_HANDLERS` state machine; per-state
+`update`/`render`/`click`/`key` behavior lives in `js/core/game-state.js`, and
+simulation/rendering/UI live in their own modules (`combat/`, `world/`, `ui/`,
+`run/`, `audio/`, `render/`). The facade objects (`UI`, `Audio`, `Sprite`,
+`RunDirector`) keep stable public APIs so callers don't change.
 
 ### Module loading order
 
-`index.html` loads JS in this exact order — **don't reorder**:
-
-```
-utils.js → sdk.js → audio.js → input.js → particles.js → sprites.js
-→ assets.js → data.js → mechanics.js → player.js → enemies.js → items.js → lootbox.js
-→ stages.js → ui.js → game.js → main.js
-```
+`index.html` loads classic scripts in dependency order — **don't reorder**. The
+convention is: leaf helpers and constants first (`utils.js`, `core/*`),
+then content/data (`content/*`), then subsystems (`combat/*`, `world/*`, `run/*`,
+`render/*`, `audio/*`, `ui/*`), then the facades and orchestrators
+(`game.js`, `main.js`). The exact, current list lives in `index.html`.
 
 ### Frame loop safety
 
-The main `loop` is wrapped in `try { update; render; } catch (e) { log }`. This is intentional — **never** let a bug freeze the entire game. A single bad frame logs and moves on.
+The main loop (`js/game/game-loop.js`) wraps each frame in `try/catch`. A runtime
+error during update/render is treated as **fatal**: it is reported through an
+`onFatal` callback and the loop **stops scheduling further frames** (rather than
+silently continuing with a broken state). This fails loud and safe instead of
+freezing or corrupting a run.
 
 ### Save / restore
 
@@ -157,7 +170,9 @@ Object.keys(ITEM_BY_ID).forEach(id => g.player.addItem(id));
 4. Push the branch
 5. Open a Pull Request
 
-For new content (items, enemies, stages, bosses), start in `js/data.js` — the engine picks it up automatically.
+For new content (items, enemies, stages, bosses), add entries in the focused
+catalogs under `js/content/` — `items.js`, `enemies.js`, `stages.js`,
+`shop.js`, and `lootboxes.js` — and the engine picks them up automatically.
 
 ## 📜 License
 

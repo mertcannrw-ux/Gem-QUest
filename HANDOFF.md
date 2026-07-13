@@ -1,6 +1,6 @@
 # Gem Quest Refactor — Agent Handoff
 
-> Last updated: **2026-07-13** · based on commit **`c228125`** (branch `codex/major-refactor`)
+> Last updated: **2026-07-13** · based on commit **`4de99c4`** (branch `codex/major-refactor`)
 > Authoritative plan: **`REFACTOR_PLAN.md`** (read it before doing any phase).
 > Status: **126 tests green · `npm run verify` green · 14 of 17 plan phases done (one extra).**
 
@@ -294,9 +294,9 @@ one step per commit. (Phase 14 content split is complete.)
 | 12 | Audio facade split | `js/audio/{audio-context,mixer,music,ambience,sfx,audio}.js` | ✅ DONE (this commit). Shared engine state hoisted to module globals in `audio-context.js`; verbs moved verbatim; `Audio` facade public surface unchanged; `Audio.sync(game)` builds a scene description. Old `js/audio.js` removed. `tests/audio.test.mjs` added. |
 | 13 | Sprite cache ↔ catalogs | `js/render/sprite.js`, `js/render/catalogs/*` | ✅ DONE (this commit). `sprites.js` split into `render/sprite.js` (shared `PAL`/cache/helpers + `Sprite` facade) and six catalogs; `buildAll` calls `registerXxxSprites()` in the original order. Bodies moved verbatim, so generated pixels/checksums are unchanged. Old `js/sprites.js` removed. `tests/sprite.test.mjs` added. |
 | 14 | Content data split | `js/content/{items,enemies,stages,shop,lootboxes,index}.js` | ✅ DONE (this commit). `data.js` split verbatim into five catalogs; IDs, array order, and all globals (`ITEMS`, `ENEMIES`, `STAGES`, `SHOP_UPGRADES`, `LOOTBOX`, `RARITY`, `pickItemRewards`, `xpToLevel`) preserved. Old `js/data.js` removed. `tests/content.test.mjs` added. |
-| 15 | Narrow runtime deps | (refactor only) | Introduce small context objects where they reduce coupling. Remove compatibility getters only after `rg` proves no caller. No global event bus. |
-| 16 | Build checks + docs | update `scripts/check.mjs`, `index.html`, `README.md`, this file | Scan nested JS dirs; validate script refs; fix the stale "bad frame is logged and loop continues" claim (current behavior is **fatal → stop**). |
-| 17 | Optional ES-module migration | (only after all above) | Leaf modules first; facades last; bootstrap last; no bundler. |
+| 15 | Narrow runtime deps | (refactor only) | Optional/gradual. Introduce context objects only where they reduce coupling; remove compatibility getters only after `rg` proves no caller; no global event bus. Deferred as polish — the split already narrowed coupling, and forcing it risks the plan's stop conditions (copying mutable state into two owners). |
+| 16 | Build checks + docs | update `scripts/check.mjs`, `index.html`, `README.md`, this file | ✅ DONE (this commit). `check.mjs` already walks nested `js/` and validates `index.html` script refs; `README.md` structure/architecture rewritten to match the modular layout and the fatal-stop loop behavior; stale `js/data.js`/`js/sprites.js`/`js/audio.js` references removed. |
+| 17 | Optional ES-module migration | (only after all above) | Optional per plan; not started. |
 
 ---
 
