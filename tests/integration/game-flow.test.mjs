@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import vm from 'node:vm';
-import { loadScripts } from './helpers/load-classic-scripts.mjs';
+import { loadScripts } from '../helpers/load-classic-scripts.mjs';
 
 // Build a VM context with the gameplay classes plus lightweight stubs for the
 // platform / rendering / audio services that the state machine touches. The

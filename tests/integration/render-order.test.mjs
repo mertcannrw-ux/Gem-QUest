@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import vm from 'node:vm';
-import { loadScripts } from './helpers/load-classic-scripts.mjs';
+import { loadScripts } from '../helpers/load-classic-scripts.mjs';
 
 // The world renderer composes many layers in a fixed order. Before extracting
 // the renderer into its own module (Phase 6), this test records the call order

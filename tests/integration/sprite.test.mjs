@@ -3,9 +3,9 @@ import test from 'node:test';
 import vm from 'node:vm';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { loadScripts } from './helpers/load-classic-scripts.mjs';
+import { loadScripts } from '../helpers/load-classic-scripts.mjs';
 
-const root = resolve(import.meta.dirname, '..');
+const root = resolve(import.meta.dirname, '..', '..');
 const SPRITE_SCRIPTS = [
   'js/render/sprite.js',
   'js/render/catalogs/player-sprites.js',

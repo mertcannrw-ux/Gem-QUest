@@ -3,9 +3,9 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import test from 'node:test';
 import vm from 'node:vm';
-import { loadScripts } from './helpers/load-classic-scripts.mjs';
+import { loadScripts } from '../helpers/load-classic-scripts.mjs';
 
-const root = resolve(import.meta.dirname, '..');
+const root = resolve(import.meta.dirname, '..', '..');
 
 test('item rewards are unique and never include maxed items', () => {
   const ctx = loadScripts(['js/utils.js', 'js/core/random.js', 'js/content/items.js', 'js/content/enemies.js', 'js/content/stages.js', 'js/content/shop.js', 'js/content/lootboxes.js']);

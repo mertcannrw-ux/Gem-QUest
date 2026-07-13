@@ -4,7 +4,7 @@ import { once } from 'node:events';
 import { resolve } from 'node:path';
 import test from 'node:test';
 
-const root = resolve(import.meta.dirname, '..');
+const root = resolve(import.meta.dirname, '..', '..');
 
 async function withServer(run) {
   const port = 18080 + Math.floor(Math.random() * 1000);

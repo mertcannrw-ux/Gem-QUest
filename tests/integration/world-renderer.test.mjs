@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import vm from 'node:vm';
-import { loadScripts } from './helpers/load-classic-scripts.mjs';
+import { loadScripts } from '../helpers/load-classic-scripts.mjs';
 
 // WorldRenderer composes the full in-arena draw in a fixed layered order.
 // This test pins that order so a later refactor cannot silently reorder the
