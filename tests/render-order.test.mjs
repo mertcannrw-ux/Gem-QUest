@@ -12,14 +12,14 @@ function buildContext() {
     window: {}
   };
   const ctx = loadScripts([
-    'js/utils.js',
+    'js/utils.js', 'js/core/random.js',
     'js/platform/settings-store.js', 'js/platform/save-schema.js', 'js/platform/meta-progress.js', 'js/core/constants.js',
     'js/core/game-state.js',
     'js/core/lifecycle.js',
     'js/data.js',
     'js/game/canvas-viewport.js',
     'js/game/game-loop.js',
-    'js/game/world-session.js', 'js/world/environment-system.js', 'js/world/environment-renderer.js', 'js/game.js'
+    'js/game/world-session.js', 'js/world/environment-system.js', 'js/world/environment-renderer.js', 'js/world/terrain-renderer.js', 'js/core/random.js', 'js/game.js'
   ], additions);
   return ctx;
 }

@@ -8,7 +8,7 @@ import { loadScripts } from './helpers/load-classic-scripts.mjs';
 const root = resolve(import.meta.dirname, '..');
 
 test('item rewards are unique and never include maxed items', () => {
-  const ctx = loadScripts(['js/utils.js', 'js/data.js']);
+  const ctx = loadScripts(['js/utils.js', 'js/core/random.js', 'js/data.js']);
   const result = vm.runInContext(
     `pickItemRewards({ sword: ITEM_BY_ID.sword.maxStacks }, 3, Utils.makeRng(42))
       .map((item) => item.id)`,
@@ -32,7 +32,7 @@ test('opening tutorial is drawn in the top center and avoids the action deck', (
 
 test('every gameplay item has matching high-resolution relic art', () => {
   const ctx = loadScripts([
-    'js/utils.js',
+    'js/utils.js', 'js/core/random.js',
     'js/sprites.js',
     'js/item-art.js',
     'js/data.js'
@@ -45,7 +45,7 @@ test('every gameplay item has matching high-resolution relic art', () => {
 });
 
 test('audio exposes contextual events and player-controlled mix/accessibility settings', () => {
-  const ctx = loadScripts(['js/utils.js', 'js/audio.js'], {
+  const ctx = loadScripts(['js/utils.js', 'js/core/random.js', 'js/audio.js'], {
     localStorage: { getItem: () => null, setItem() {} }
   });
   const result = vm.runInContext(`
@@ -119,7 +119,7 @@ test('environment rendering includes a bottom-anchored forest prop family and te
 });
 
 test('trees remain solid, block traced projectiles, and become non-solid stumps after destruction', () => {
-  const ctx = loadScripts(['js/utils.js', 'js/platform/settings-store.js', 'js/platform/save-schema.js', 'js/platform/meta-progress.js', 'js/core/constants.js', 'js/core/game-state.js', 'js/core/lifecycle.js', 'js/game/canvas-viewport.js', 'js/game/game-loop.js', 'js/game/world-session.js', 'js/world/environment-system.js', 'js/world/environment-renderer.js', 'js/game.js'], {
+  const ctx = loadScripts(['js/utils.js', 'js/core/random.js', 'js/platform/settings-store.js', 'js/platform/save-schema.js', 'js/platform/meta-progress.js', 'js/core/constants.js', 'js/core/game-state.js', 'js/core/lifecycle.js', 'js/game/canvas-viewport.js', 'js/game/game-loop.js', 'js/game/world-session.js', 'js/world/environment-system.js', 'js/world/environment-renderer.js', 'js/world/terrain-renderer.js', 'js/core/random.js', 'js/game.js'], {
     Audio: { play() {} },
     ParticleSystem: class {},
     RunDirector: class {},
@@ -167,7 +167,7 @@ test('trees remain solid, block traced projectiles, and become non-solid stumps 
 });
 
 test('starting a new run defensively initializes persistent environment containers', () => {
-  const ctx = loadScripts(['js/utils.js', 'js/platform/settings-store.js', 'js/platform/save-schema.js', 'js/platform/meta-progress.js', 'js/core/constants.js', 'js/core/game-state.js', 'js/core/lifecycle.js', 'js/game/canvas-viewport.js', 'js/game/game-loop.js', 'js/game/world-session.js', 'js/world/environment-system.js', 'js/world/environment-renderer.js', 'js/game.js'], {
+  const ctx = loadScripts(['js/utils.js', 'js/core/random.js', 'js/platform/settings-store.js', 'js/platform/save-schema.js', 'js/platform/meta-progress.js', 'js/core/constants.js', 'js/core/game-state.js', 'js/core/lifecycle.js', 'js/game/canvas-viewport.js', 'js/game/game-loop.js', 'js/game/world-session.js', 'js/world/environment-system.js', 'js/world/environment-renderer.js', 'js/world/terrain-renderer.js', 'js/core/random.js', 'js/game.js'], {
     Audio: { resume() {} },
     Player: class {
       constructor() {
@@ -220,7 +220,7 @@ test('enemy rendering never depends on the gameplay update context', () => {
 
 test('mutations scale enemy bodies and rare mutations expose unique mechanics', () => {
   const ctx = loadScripts(
-    ['js/utils.js', 'js/mechanics.js', 'js/enemies.js'],
+    ['js/utils.js', 'js/core/random.js', 'js/mechanics.js', 'js/enemies.js'],
     {
       ENEMIES: {
         slime: { id: 'slime', name: 'Slime', hp: 20, speed: 40, dmg: 5, xp: 2, coin: 1, size: 20, ai: 'chase' }
@@ -259,7 +259,7 @@ test('mutations scale enemy bodies and rare mutations expose unique mechanics', 
 
 test('player stat modifiers distinguish flat and percentage damage', () => {
   const ctx = loadScripts(
-    ['js/utils.js', 'js/data.js', 'js/player.js'],
+    ['js/utils.js', 'js/core/random.js', 'js/data.js', 'js/player.js'],
     { Audio: { shoot() {} }, Input: { getMoveAxis: () => ({ x: 0, y: 0 }), mouse: {} } }
   );
   const stats = vm.runInContext(`
@@ -279,7 +279,7 @@ test('player stat modifiers distinguish flat and percentage damage', () => {
 
 test('combat drones maintain a visible orbit position and fire from their model', () => {
   const ctx = loadScripts(
-    ['js/utils.js', 'js/data.js', 'js/player.js'],
+    ['js/utils.js', 'js/core/random.js', 'js/data.js', 'js/player.js'],
     {
       Audio: { shoot() {}, shootBig() {}, deny() {} },
       Input: {
@@ -338,7 +338,7 @@ test('combat drones maintain a visible orbit position and fire from their model'
 
 test('item stacks are capped and ad revive restores a dead player', () => {
   const ctx = loadScripts(
-    ['js/utils.js', 'js/data.js', 'js/player.js'],
+    ['js/utils.js', 'js/core/random.js', 'js/data.js', 'js/player.js'],
     { Audio: { shoot() {} }, Input: { getMoveAxis: () => ({ x: 0, y: 0 }), mouse: {} } }
   );
   const result = vm.runInContext(`
@@ -358,7 +358,7 @@ test('item stacks are capped and ad revive restores a dead player', () => {
 
 test('large XP pickups queue every earned level', () => {
   const ctx = loadScripts(
-    ['js/utils.js', 'js/data.js', 'js/player.js'],
+    ['js/utils.js', 'js/core/random.js', 'js/data.js', 'js/player.js'],
     { Audio: { shoot() {} }, Input: { getMoveAxis: () => ({ x: 0, y: 0 }), mouse: {} } }
   );
   const result = vm.runInContext(`
@@ -677,7 +677,7 @@ test('touch release does not clear a still-held keyboard direction', () => {
 
 test('canvas backing resolution follows physical display pixels', () => {
   const ctx = loadScripts(
-    ['js/platform/settings-store.js', 'js/platform/save-schema.js', 'js/platform/meta-progress.js', 'js/core/constants.js', 'js/core/game-state.js', 'js/core/lifecycle.js', 'js/game/canvas-viewport.js', 'js/game/game-loop.js', 'js/game/world-session.js', 'js/world/environment-system.js', 'js/world/environment-renderer.js', 'js/game.js'],
+    ['js/platform/settings-store.js', 'js/platform/save-schema.js', 'js/platform/meta-progress.js', 'js/core/constants.js', 'js/core/game-state.js', 'js/core/lifecycle.js', 'js/game/canvas-viewport.js', 'js/game/game-loop.js', 'js/game/world-session.js', 'js/world/environment-system.js', 'js/world/environment-renderer.js', 'js/world/terrain-renderer.js', 'js/core/random.js', 'js/game.js'],
     {
       SHOP_UPGRADES: [],
       STAGES: [],
@@ -705,7 +705,7 @@ test('canvas backing resolution follows physical display pixels', () => {
 
 test('main-menu forge creates a persistent shop profile without starting a run', () => {
   const ctx = loadScripts(
-    ['js/platform/settings-store.js', 'js/platform/save-schema.js', 'js/platform/meta-progress.js', 'js/core/constants.js', 'js/core/game-state.js', 'js/core/lifecycle.js', 'js/game/canvas-viewport.js', 'js/game/game-loop.js', 'js/game/world-session.js', 'js/world/environment-system.js', 'js/world/environment-renderer.js', 'js/game.js'],
+    ['js/platform/settings-store.js', 'js/platform/save-schema.js', 'js/platform/meta-progress.js', 'js/core/constants.js', 'js/core/game-state.js', 'js/core/lifecycle.js', 'js/game/canvas-viewport.js', 'js/game/game-loop.js', 'js/game/world-session.js', 'js/world/environment-system.js', 'js/world/environment-renderer.js', 'js/world/terrain-renderer.js', 'js/core/random.js', 'js/game.js'],
     {
       SHOP_UPGRADES: [],
       STAGES: [],
@@ -749,7 +749,7 @@ test('main-menu forge creates a persistent shop profile without starting a run',
 test('main-menu forge renders without requiring a stage HUD', () => {
   const calls = [];
   const ctx = loadScripts(
-    ['js/platform/settings-store.js', 'js/platform/save-schema.js', 'js/platform/meta-progress.js', 'js/core/constants.js', 'js/core/game-state.js', 'js/core/lifecycle.js', 'js/game/canvas-viewport.js', 'js/game/game-loop.js', 'js/game/world-session.js', 'js/world/environment-system.js', 'js/world/environment-renderer.js', 'js/game.js'],
+    ['js/platform/settings-store.js', 'js/platform/save-schema.js', 'js/platform/meta-progress.js', 'js/core/constants.js', 'js/core/game-state.js', 'js/core/lifecycle.js', 'js/game/canvas-viewport.js', 'js/game/game-loop.js', 'js/game/world-session.js', 'js/world/environment-system.js', 'js/world/environment-renderer.js', 'js/world/terrain-renderer.js', 'js/core/random.js', 'js/game.js'],
     {
       SHOP_UPGRADES: [],
       STAGES: [],
@@ -792,7 +792,7 @@ test('main-menu forge renders without requiring a stage HUD', () => {
 
 test('stage completion proceeds when a boss lootbox has no item choices', () => {
   const ctx = loadScripts(
-    ['js/lootbox.js', 'js/platform/settings-store.js', 'js/platform/save-schema.js', 'js/platform/meta-progress.js', 'js/core/constants.js', 'js/core/game-state.js', 'js/core/lifecycle.js', 'js/game/canvas-viewport.js', 'js/game/game-loop.js', 'js/game/world-session.js', 'js/world/environment-system.js', 'js/world/environment-renderer.js', 'js/game.js'],
+    ['js/lootbox.js', 'js/platform/settings-store.js', 'js/platform/save-schema.js', 'js/platform/meta-progress.js', 'js/core/constants.js', 'js/core/game-state.js', 'js/core/lifecycle.js', 'js/game/canvas-viewport.js', 'js/game/game-loop.js', 'js/game/world-session.js', 'js/world/environment-system.js', 'js/world/environment-renderer.js', 'js/world/terrain-renderer.js', 'js/core/random.js', 'js/game.js'],
     {
       LOOTBOX: { gold: { count: 3 } },
       pickItemRewards: () => [],
@@ -838,7 +838,7 @@ test('stage completion proceeds when a boss lootbox has no item choices', () => 
 
 test('stage-complete state freezes combat while allowing particles to animate', () => {
   const ctx = loadScripts(
-    ['js/platform/settings-store.js', 'js/platform/save-schema.js', 'js/platform/meta-progress.js', 'js/core/constants.js', 'js/core/game-state.js', 'js/core/lifecycle.js', 'js/game/canvas-viewport.js', 'js/game/game-loop.js', 'js/game/world-session.js', 'js/world/environment-system.js', 'js/world/environment-renderer.js', 'js/game.js'],
+    ['js/platform/settings-store.js', 'js/platform/save-schema.js', 'js/platform/meta-progress.js', 'js/core/constants.js', 'js/core/game-state.js', 'js/core/lifecycle.js', 'js/game/canvas-viewport.js', 'js/game/game-loop.js', 'js/game/world-session.js', 'js/world/environment-system.js', 'js/world/environment-renderer.js', 'js/world/terrain-renderer.js', 'js/core/random.js', 'js/game.js'],
     {
       SHOP_UPGRADES: [],
       STAGES: [],
@@ -878,7 +878,7 @@ test('stage-complete state freezes combat while allowing particles to animate', 
 
 test('stage completion stops director and pickup updates in its transition frame', () => {
   const ctx = loadScripts(
-    ['js/platform/settings-store.js', 'js/platform/save-schema.js', 'js/platform/meta-progress.js', 'js/core/constants.js', 'js/core/game-state.js', 'js/core/lifecycle.js', 'js/game/canvas-viewport.js', 'js/game/game-loop.js', 'js/game/world-session.js', 'js/world/environment-system.js', 'js/world/environment-renderer.js', 'js/game.js'],
+    ['js/platform/settings-store.js', 'js/platform/save-schema.js', 'js/platform/meta-progress.js', 'js/core/constants.js', 'js/core/game-state.js', 'js/core/lifecycle.js', 'js/game/canvas-viewport.js', 'js/game/game-loop.js', 'js/game/world-session.js', 'js/world/environment-system.js', 'js/world/environment-renderer.js', 'js/world/terrain-renderer.js', 'js/core/random.js', 'js/game.js'],
     {
       SHOP_UPGRADES: [],
       STAGES: [{ id: 'forest' }],
@@ -930,7 +930,7 @@ test('stage completion stops director and pickup updates in its transition frame
 test('a fatal game-loop error stops further animation frames', () => {
   let scheduledFrames = 0;
   const ctx = loadScripts(
-    ['js/platform/settings-store.js', 'js/platform/save-schema.js', 'js/platform/meta-progress.js', 'js/core/constants.js', 'js/core/game-state.js', 'js/core/lifecycle.js', 'js/game/canvas-viewport.js', 'js/game/game-loop.js', 'js/game/world-session.js', 'js/world/environment-system.js', 'js/world/environment-renderer.js', 'js/game.js'],
+    ['js/platform/settings-store.js', 'js/platform/save-schema.js', 'js/platform/meta-progress.js', 'js/core/constants.js', 'js/core/game-state.js', 'js/core/lifecycle.js', 'js/game/canvas-viewport.js', 'js/game/game-loop.js', 'js/game/world-session.js', 'js/world/environment-system.js', 'js/world/environment-renderer.js', 'js/world/terrain-renderer.js', 'js/core/random.js', 'js/game.js'],
     {
       SHOP_UPGRADES: [],
       STAGES: [],
@@ -960,7 +960,7 @@ test('a fatal game-loop error stops further animation frames', () => {
 
 test('Starfall synergy creates a secondary blast with damage', () => {
   const ctx = loadScripts(
-    ['js/utils.js', 'js/mechanics.js'],
+    ['js/utils.js', 'js/core/random.js', 'js/mechanics.js'],
     {
       ITEMS_RUNTIME: {},
       STAGES: []
@@ -989,7 +989,7 @@ test('Starfall synergy creates a secondary blast with damage', () => {
 
 test('Starfall world event telegraphs before damaging its impact zone', () => {
   const ctx = loadScripts(
-    ['js/utils.js', 'js/mechanics.js'],
+    ['js/utils.js', 'js/core/random.js', 'js/mechanics.js'],
     {
       ITEMS_RUNTIME: {},
       STAGES: [],
@@ -1026,7 +1026,7 @@ test('Starfall world event telegraphs before damaging its impact zone', () => {
 
 test('Rift Frenzy portals teleport the player and lightning damages enemies along the route', () => {
   const ctx = loadScripts(
-    ['js/utils.js', 'js/mechanics.js'],
+    ['js/utils.js', 'js/core/random.js', 'js/mechanics.js'],
     {
       Audio: { riftTeleport() {} },
       ITEMS_RUNTIME: {},
@@ -1079,7 +1079,7 @@ test('Rift Frenzy portals teleport the player and lightning damages enemies alon
 
 test('Gem Storm crystals reward movement and discharge chain lightning', () => {
   const ctx = loadScripts(
-    ['js/utils.js', 'js/mechanics.js'],
+    ['js/utils.js', 'js/core/random.js', 'js/mechanics.js'],
     {
       Audio: { eventCollect() {}, eventComplete() {} },
       ITEMS_RUNTIME: {},
@@ -1125,7 +1125,7 @@ test('Gem Storm crystals reward movement and discharge chain lightning', () => {
 
 test('Starfall circles become friendly and stronger after player attunement', () => {
   const ctx = loadScripts(
-    ['js/utils.js', 'js/mechanics.js'],
+    ['js/utils.js', 'js/core/random.js', 'js/mechanics.js'],
     {
       Audio: { eventAttune() {}, eventImpact() {} },
       ITEMS_RUNTIME: {},
@@ -1169,7 +1169,7 @@ test('Starfall circles become friendly and stronger after player attunement', ()
 
 test('Luminous Tide wells heal, purge enemies, and grant ascension', () => {
   const ctx = loadScripts(
-    ['js/utils.js', 'js/mechanics.js'],
+    ['js/utils.js', 'js/core/random.js', 'js/mechanics.js'],
     {
       Audio: { eventAttune() {}, eventComplete() {} },
       ITEMS_RUNTIME: {},

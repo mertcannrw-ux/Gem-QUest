@@ -13,17 +13,6 @@ function compactAlive(arr, keep) {
   arr.length = w;
 }
 
-function environmentHash(x, y, salt = 0) {
-  let h = Math.imul(x | 0, 374761393) + Math.imul(y | 0, 668265263) + Math.imul(salt | 0, 69069);
-  h = (h ^ (h >>> 13)) >>> 0;
-  h = Math.imul(h, 1274126177) >>> 0;
-  return (h ^ (h >>> 16)) >>> 0;
-}
-
-function environmentRandom(x, y, salt = 0) {
-  return environmentHash(x, y, salt) / 4294967295;
-}
-
 class Game {
   constructor(canvas) {
     this.canvas = canvas;
@@ -164,6 +153,14 @@ class Game {
     return this._environmentRenderer;
   }
   set environmentRenderer(v) { this._environmentRenderer = v; }
+
+  // Static terrain drawing lives in TerrainRenderer; the same lazy pattern
+  // keeps partial fixtures working.
+  get terrainRenderer() {
+    if (!this._terrainRenderer) this._terrainRenderer = new TerrainRenderer(this);
+    return this._terrainRenderer;
+  }
+  set terrainRenderer(v) { this._terrainRenderer = v; }
 
   loadSettings() {
     return SettingsStore.load();
@@ -752,154 +749,18 @@ class Game {
     this.director.renderEventOverlay(ctx, this.cam);
   }
 
-  // Tiled ground renderer. One tile = 32x32 design units.
-  // We offset by camera so the world feels infinite.
+  // --- Terrain delegation shims ---
+  // Terrain drawing lives in TerrainRenderer (see js/world/terrain-renderer.js).
+  // These thin methods forward renderWorld's calls so behavior is unchanged.
   renderTiles(ctx, stage) {
-    const tileId = 'tile_' + stage.id;
-    if (!Sprite.has(tileId)) return;
-    const tile = Sprite.get(tileId);
-    const ts = tile.w;
-    const camX = this.cam.x;
-    const camY = this.cam.y;
-    // Start coords (negative allowed)
-    const startX = Math.floor(camX / ts) * ts - ts;
-    const startY = Math.floor(camY / ts) * ts - ts;
-    const endX = camX + this.vw + ts;
-    const endY = camY + this.vh + ts;
-    for (let y = startY; y < endY; y += ts) {
-      for (let x = startX; x < endX; x += ts) {
-        const gx = Math.floor(x / ts), gy = Math.floor(y / ts);
-        const variation = environmentRandom(gx, gy, stage.index * 23 + 19);
-        const altId = stage.id === 'forest' ? 'tile_forest_moss' :
-          stage.id === 'caves' ? 'tile_cave_glint' :
-          stage.id === 'castle' ? 'tile_castle_worn' : 'tile_lava_crack';
-        const image = variation > 0.84 && Sprite.has(altId) ? Sprite.get(altId).image : tile.image;
-        ctx.drawImage(image, x - camX, y - camY);
-      }
-    }
+    return this.terrainRenderer.drawTiles(ctx, stage);
   }
-
-  // Static-looking terrain dressing is derived from world cells rather than
-  // randomized every frame. It breaks up the repeated 32px tiles while
-  // remaining inexpensive and deterministic.
   renderTerrainDetails(ctx, stage) {
-    const cam = this.cam;
-    const cell = 96;
-    const startX = Math.floor(cam.x / cell) * cell - cell;
-    const startY = Math.floor(cam.y / cell) * cell - cell;
-    const endX = cam.x + this.vw + cell;
-    const endY = cam.y + this.vh + cell;
-    const t = this.time;
-
-    for (let y = startY; y < endY; y += cell) {
-      for (let x = startX; x < endX; x += cell) {
-        const gx = Math.floor(x / cell), gy = Math.floor(y / cell);
-        const r = environmentRandom(gx, gy, stage.index * 41 + 3);
-        const sx = x - cam.x + 12 + environmentRandom(gx, gy, 8) * (cell - 24);
-        const sy = y - cam.y + 12 + environmentRandom(gx, gy, 9) * (cell - 24);
-
-        if (stage.id === 'forest') {
-          if (r < 0.47) {
-            ctx.fillStyle = `rgba(46,92,51,${0.11 + environmentRandom(gx, gy, 10) * 0.07})`;
-            ctx.beginPath();
-            ctx.ellipse(sx, sy, 17 + r * 18, 8 + r * 9, environmentRandom(gx, gy, 11) * Math.PI, 0, Math.PI * 2);
-            ctx.fill();
-          }
-          if (r > 0.73) {
-            ctx.strokeStyle = `rgba(89,133,62,${0.18 + Math.sin(t * 0.6 + gx + gy) * 0.04})`;
-            ctx.lineWidth = 1.2;
-            for (let blade = 0; blade < 4; blade++) {
-              const bx = sx + blade * 3, by = sy + (blade % 2) * 2;
-              ctx.beginPath();
-              ctx.moveTo(bx, by + 6);
-              ctx.lineTo(bx + (blade - 1.5) * 1.8, by - 3);
-              ctx.stroke();
-            }
-          }
-          if (r > 0.91) {
-            ctx.fillStyle = 'rgba(147,112,52,.2)';
-            for (let leaf = 0; leaf < 5; leaf++) {
-              ctx.save();
-              ctx.translate(sx + leaf * 4, sy + ((leaf * 7) % 12));
-              ctx.rotate(environmentRandom(gx, gy, 20 + leaf) * Math.PI);
-              ctx.fillRect(-2, -1, 4, 2);
-              ctx.restore();
-            }
-          }
-        } else if (stage.id === 'caves' && r > 0.52) {
-          ctx.fillStyle = `rgba(118,102,184,${0.08 + r * 0.1})`;
-          ctx.beginPath();
-          ctx.arc(sx, sy, 4 + r * 8, 0, Math.PI * 2);
-          ctx.fill();
-        } else if (stage.id === 'castle' && r > 0.58) {
-          ctx.strokeStyle = `rgba(118,44,86,${0.1 + r * 0.12})`;
-          ctx.lineWidth = 1;
-          ctx.beginPath();
-          ctx.moveTo(sx - 12, sy + 7);
-          ctx.lineTo(sx + 4, sy - 6);
-          ctx.lineTo(sx + 14, sy + 4);
-          ctx.stroke();
-        } else if (stage.id === 'dragon' && r > 0.45) {
-          ctx.fillStyle = `rgba(224,73,28,${0.06 + r * 0.11})`;
-          ctx.beginPath();
-          ctx.ellipse(sx, sy, 10 + r * 12, 2 + r * 4, environmentRandom(gx, gy, 12) * Math.PI, 0, Math.PI * 2);
-          ctx.fill();
-        }
-      }
-    }
+    return this.terrainRenderer.drawTerrainDetails(ctx, stage);
   }
-
-  // Distant parallax: subtle drifting stars / dust / mist
   renderParallaxBack(ctx) {
-    const t = this.time;
-    if (this.stage && STAGES[this.stage.index].id === 'caves') {
-      // Crystals glint
-      for (let i = 0; i < 14; i++) {
-        const x = ((i * 217 + t * 8) % (this.vw + 200)) - 100;
-        const y = (i * 91) % this.vh;
-        const a = 0.3 + Math.sin(t * 2 + i) * 0.2;
-        ctx.fillStyle = `rgba(122,240,255,${a * 0.3})`;
-        ctx.beginPath();
-        ctx.arc(x, y, 2, 0, Math.PI * 2);
-        ctx.fill();
-      }
-    } else if (this.stage && STAGES[this.stage.index].id === 'dragon') {
-      // Embers rising
-      for (let i = 0; i < 20; i++) {
-        const x = ((i * 173 + t * 30) % (this.vw + 200)) - 100;
-        const y = ((i * 67 - t * 40) % (this.vh + 200)) - 100;
-        if (y < 0) continue;
-        ctx.fillStyle = `rgba(251,146,60,${0.3 + Math.sin(t * 3 + i) * 0.2})`;
-        ctx.beginPath();
-        ctx.arc(x, y, 1.5, 0, Math.PI * 2);
-        ctx.fill();
-      }
-    } else if (this.stage && STAGES[this.stage.index].id === 'castle') {
-      // Distant moon
-      ctx.fillStyle = 'rgba(248,113,113,0.15)';
-      ctx.beginPath();
-      ctx.arc(this.vw * 0.8, 80, 60, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = 'rgba(248,113,113,0.4)';
-      ctx.beginPath();
-      ctx.arc(this.vw * 0.8, 80, 30, 0, Math.PI * 2);
-      ctx.fill();
-    } else if (this.stage && STAGES[this.stage.index].id === 'forest') {
-      // Soft sun beams
-      ctx.fillStyle = 'rgba(253,224,71,0.04)';
-      for (let i = 0; i < 4; i++) {
-        const x = i * 350 - 100 + Math.sin(t * 0.3 + i) * 30;
-        ctx.beginPath();
-        ctx.moveTo(x, 0);
-        ctx.lineTo(x + 200, 0);
-        ctx.lineTo(x + 350, this.vh);
-        ctx.lineTo(x + 150, this.vh);
-        ctx.closePath();
-        ctx.fill();
-      }
-    }
+    return this.terrainRenderer.drawParallaxBack(ctx);
   }
-
   // --- Environment delegation shims ---
   // The simulation lives in EnvironmentSystem and the drawing in
   // EnvironmentRenderer (see js/world/environment-*.js). These thin
