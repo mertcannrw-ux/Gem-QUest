@@ -112,8 +112,12 @@ const declarations = [
 //
 // Some declarations are intentionally exposed for testing or future use:
 const intentionalPublicApis = new Set([
-  'makeSeededRandom',  // exported for test determinism
-  'seededNext',        // named function expression inside makeSeededRandom
+  'makeSeededRandom',    // exported for test determinism
+  'seededNext',          // named function expression inside makeSeededRandom
+  'buildCombatContext',  // narrow context factory for subsystem conversion
+  'buildRunContext',     // narrow context factory for subsystem conversion
+  'buildRenderModel',    // narrow context factory for subsystem conversion
+  'buildUIActions',      // narrow context factory for subsystem conversion
 ]);
 const deadDeclarations = [...new Set(declarations)].filter((name) => {
   if (intentionalPublicApis.has(name)) return false;
