@@ -96,6 +96,9 @@ function buildContext() {
     'js/core/game-state.js',
     'js/core/lifecycle.js',
     'js/data.js',
+    'js/game/canvas-viewport.js',
+    'js/game/game-loop.js',
+    'js/game/world-session.js',
     'js/game.js'
   ], additions);
   vm.runInContext(`

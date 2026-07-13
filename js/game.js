@@ -24,35 +24,6 @@ function environmentRandom(x, y, salt = 0) {
   return environmentHash(x, y, salt) / 4294967295;
 }
 
-function computeCanvasMetrics(logicalWidth, logicalHeight, viewportWidth, viewportHeight, dpr = 1) {
-  const targetAspect = logicalWidth / logicalHeight;
-  const viewportAspect = viewportWidth / viewportHeight;
-  let cssWidth;
-  let cssHeight;
-
-  if (viewportAspect > targetAspect) {
-    cssHeight = viewportHeight;
-    cssWidth = cssHeight * targetAspect;
-  } else {
-    cssWidth = viewportWidth;
-    cssHeight = cssWidth / targetAspect;
-  }
-
-  // Match the backing store to the number of physical pixels the canvas
-  // occupies on screen. Keep at least the design resolution so smaller
-  // windows downsample a detailed frame instead of rendering a tiny one.
-  const displayScale = cssWidth / logicalWidth;
-  const renderScale = Math.min(3, Math.max(1, displayScale * Math.max(1, dpr || 1)));
-
-  return {
-    cssWidth,
-    cssHeight,
-    renderScale,
-    backingWidth: Math.round(logicalWidth * renderScale),
-    backingHeight: Math.round(logicalHeight * renderScale)
-  };
-}
-
 class Game {
   constructor(canvas) {
     this.canvas = canvas;
@@ -80,6 +51,10 @@ class Game {
     // alias to `meta.data` so existing UI and tests do not all change at once.
     this.meta = new MetaProgress();
 
+    // Live world entities are owned by a WorldSession; `game.enemies` etc.
+    // remain available through thin getters/setters.
+    this.world = new WorldSession();
+
     this.player = null;
     this.stage = null;
     this.enemies = [];
@@ -101,12 +76,21 @@ class Game {
     this.director = new RunDirector(this);
     this.applySettings();
 
+    // The main loop is driven by GameLoop; the loop() method runs one frame.
+    this._loop = new GameLoop({
+      update: (dt) => this.update(dt),
+      render: () => this.render(),
+      onFatal: (e) => this.handleFatalError(e),
+      endFrame: () => Input.endFrame()
+    });
+
     this.levelUpChoices = null;
     this.pendingLevelUps = 0;
     this.reviveUsed = false;
     this.adPending = false;
 
     // Resize
+    this.viewport = new CanvasViewport(this.canvas, this.ctx, this.vw, this.vh);
     this.resize();
     window.addEventListener('resize', () => this.resize());
     window.visualViewport?.addEventListener('resize', () => this.resize());
@@ -115,59 +99,30 @@ class Game {
     this.canvas.addEventListener('click', (e) => this.onClick(e));
     this.canvas.addEventListener('mousemove', (e) => {
       // Track mouse in logical space for hover detection
-      const r = this.canvas.getBoundingClientRect();
-      this.mouseLogical = {
-        x: (e.clientX - r.left) * (this.vw / r.width),
-        y: (e.clientY - r.top) * (this.vh / r.height)
-      };
+      this.mouseLogical = this.viewport.pointerToLogical(e.clientX, e.clientY);
     });
     // Touch fallback: tap = click
     this.canvas.addEventListener('touchend', (e) => {
       const t = e.changedTouches[0];
       if (!t) return;
-      const r = this.canvas.getBoundingClientRect();
-      const mx = (t.clientX - r.left) * (this.vw / r.width);
-      const my = (t.clientY - r.top) * (this.vh / r.height);
-      this.handleClick(mx, my);
+      const p = this.viewport.pointerToLogical(t.clientX, t.clientY);
+      this.handleClick(p.x, p.y);
       e.preventDefault();
     }, { passive: false });
   }
 
   // Resize the canvas to letterbox-fit the viewport
   resize() {
-    const metrics = computeCanvasMetrics(
-      this.vw,
-      this.vh,
-      window.innerWidth,
-      window.innerHeight,
-      window.devicePixelRatio || 1
-    );
-
-    this.canvas.style.width = `${metrics.cssWidth}px`;
-    this.canvas.style.height = `${metrics.cssHeight}px`;
-
-    if (this.canvas.width !== metrics.backingWidth || this.canvas.height !== metrics.backingHeight) {
-      this.canvas.width = metrics.backingWidth;
-      this.canvas.height = metrics.backingHeight;
-
-      // Resizing resets the entire 2D state, so restore the logical-space
-      // transform and the high-quality resampling settings together.
-      const scaleX = this.canvas.width / this.vw;
-      const scaleY = this.canvas.height / this.vh;
-      this.ctx.setTransform(scaleX, 0, 0, scaleY, 0, 0);
-      this.ctx.imageSmoothingEnabled = true;
-      this.ctx.imageSmoothingQuality = 'high';
-
-      // Rebuild context-owned gradients on the next frame.
-      this._bgGradient = null;
-      this._vignetteGradient = null;
-    }
-
-    this.dpr = window.devicePixelRatio || 1;
-    this.renderScale = metrics.renderScale;
+    this.viewport.resize();
+    this.dpr = this.viewport.dpr;
+    this.renderScale = this.viewport.renderScale;
     this._viewportWidth = window.innerWidth;
     this._viewportHeight = window.innerHeight;
     this._viewportDpr = this.dpr;
+    if (this.viewport.resized) {
+      this._bgGradient = null;
+      this._vignetteGradient = null;
+    }
   }
 
   // ===== State management =====
@@ -182,6 +137,23 @@ class Game {
     if (!this.meta) this.meta = new MetaProgress();
     this.meta.data = value;
   }
+
+  // World entities are owned by WorldSession; these accessors keep the
+  // existing `game.enemies` / `game.projectiles` / ... call sites working.
+  get player() { if (!this.world) this.world = new WorldSession(); return this.world.player; }
+  set player(v) { if (!this.world) this.world = new WorldSession(); this.world.player = v; }
+  get stage() { if (!this.world) this.world = new WorldSession(); return this.world.stage; }
+  set stage(v) { if (!this.world) this.world = new WorldSession(); this.world.stage = v; }
+  get enemies() { if (!this.world) this.world = new WorldSession(); return this.world.enemies; }
+  set enemies(v) { if (!this.world) this.world = new WorldSession(); this.world.enemies = v; }
+  get projectiles() { if (!this.world) this.world = new WorldSession(); return this.world.projectiles; }
+  set projectiles(v) { if (!this.world) this.world = new WorldSession(); this.world.projectiles = v; }
+  get enemyProjectiles() { if (!this.world) this.world = new WorldSession(); return this.world.enemyProjectiles; }
+  set enemyProjectiles(v) { if (!this.world) this.world = new WorldSession(); this.world.enemyProjectiles = v; }
+  get lootboxes() { if (!this.world) this.world = new WorldSession(); return this.world.lootboxes; }
+  set lootboxes(v) { if (!this.world) this.world = new WorldSession(); this.world.lootboxes = v; }
+  get particles() { if (!this.world) this.world = new WorldSession(); return this.world.particles; }
+  set particles(v) { if (!this.world) this.world = new WorldSession(); this.world.particles = v; }
 
   loadSettings() {
     return SettingsStore.load();
@@ -288,9 +260,9 @@ class Game {
     this.projectiles.length = 0;
     this.enemyProjectiles.length = 0;
     this.lootboxes.length = 0;
+    this.world.resetForNewRun();
     this.resetEnvironment();
     ITEMS_RUNTIME.clear();
-    this.particles.clear();
     this.director.reset();
     this.stage = new StageManager(this);
     this.stage.startStage(stageIndex);
@@ -470,7 +442,7 @@ class Game {
     this.transitionTo(GAME_STATE.STAGE_COMPLETE);
     // Freeze combat immediately. Existing hostile shots should not damage the
     // player while the completion UI is on screen.
-    this.enemyProjectiles.length = 0;
+    this.world.clearHostileProjectiles();
     this.run.maxStageReached = Math.max(
       this.run.maxStageReached,
       Math.min(this.stage.index + 1, STAGES.length - 1)
@@ -506,7 +478,7 @@ class Game {
     if (!result.completed || this.state !== GAME_STATE.GAME_OVER) return;
     if (this.player.revive(0.5)) {
       this.reviveUsed = true;
-      this.enemyProjectiles.length = 0;
+      this.world.clearHostileProjectiles();
       this.enemies = this.enemies.filter((enemy) =>
         Utils.dist2(enemy.x, enemy.y, this.player.x, this.player.y) > 180 * 180
       );
@@ -518,25 +490,19 @@ class Game {
   }
 
   // ===== Main loop =====
+  // Run a single frame through the GameLoop driver. The loop keeps scheduling
+  // itself via requestAnimationFrame until a fatal error stops it.
   loop(now) {
-    if (this.fatalError) return;
-    if (!this.lastTime) this.lastTime = now;
-    let dt = (now - this.lastTime) / 1000;
-    this.lastTime = now;
-    // Clamp dt to avoid huge jumps after tab switches
-    if (dt > 0.1) dt = 0.1;
-
-    try {
-      this.update(dt);
-      this.render();
-    } catch (e) {
-      this.handleFatalError(e);
-      Input.endFrame();
-      return;
+    if (!this._loop) {
+      this._loop = new GameLoop({
+        update: (dt) => this.update(dt),
+        render: () => this.render(),
+        onFatal: (e) => this.handleFatalError(e),
+        endFrame: () => Input.endFrame()
+      });
     }
-
-    Input.endFrame();
-    requestAnimationFrame((t) => this.loop(t));
+    this._loop.running = true;
+    this._loop.frame(now);
   }
 
   handleFatalError(error) {
@@ -595,15 +561,15 @@ class Game {
 
       // Enemies
       for (const e of this.enemies) e.update(dt, this);
-      compactAlive(this.enemies, e => e.alive);
+      // dead entities compacted by WorldSession
       // Projectiles
       for (const p of this.projectiles) p.update(dt, this);
-      compactAlive(this.projectiles, p => !p.dead);
+      // dead entities compacted by WorldSession
       for (const p of this.enemyProjectiles) p.update(dt, this);
-      compactAlive(this.enemyProjectiles, p => !p.dead);
+      // dead entities compacted by WorldSession
       // Lootboxes
       for (const lb of this.lootboxes) lb.update(dt, this);
-      compactAlive(this.lootboxes, lb => lb.alive);
+      this.world.compactDeadEntities();
       if (this.completeStageIfReady()) {
         // Stage completion is atomic: only non-combat visuals can advance
         // during the frame that performs the transition.
