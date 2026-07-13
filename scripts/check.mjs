@@ -162,14 +162,19 @@ for (const file of jsFiles) {
 
 for (const testFile of testFiles) {
   const source = readFileSync(testFile, 'utf8');
-  // Look for paths like 'js/...' in test source that reference production files
-  const prodRefs = source.matchAll(/['"]js\/[^'"]+\.js['"]/g);
-  for (const refMatch of prodRefs) {
-    const ref = refMatch[0].replace(/['"]/g, '');
-    if (!ALL_PRODUCTION_MODULES.has(ref)) {
-      throw new Error(
-        `Test references non-production file: ${ref} in ${relative(root, testFile)}`
-      );
+  // Look for paths like 'js/...' in test source that reference production files.
+  // Lines containing '# skip-check-path' are intentionally skipped.
+  const lines = source.split('\n');
+  const prodRefPattern = /['"]js\/[^'"]+\.js['"]/g;
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].includes('# skip-check-path')) continue;
+    for (const match of lines[i].matchAll(prodRefPattern)) {
+      const ref = match[0].replace(/['"]/g, '');
+      if (!ALL_PRODUCTION_MODULES.has(ref)) {
+        throw new Error(
+          `Test references non-production file: ${ref} in ${relative(root, testFile)}`
+        );
+      }
     }
   }
 }

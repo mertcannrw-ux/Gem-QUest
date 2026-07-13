@@ -12,6 +12,9 @@
  * original `game.js` branches and re-scoped to take `game` as the first arg.
  */
 
+/** @typedef {import('./types.js').GameState} GameState */
+
+/** @type {Readonly<Record<string, GameState>>} */
 const GAME_STATE = Object.freeze({
   MENU: 'menu',
   HELP: 'help',
@@ -25,8 +28,10 @@ const GAME_STATE = Object.freeze({
   PAUSED: 'paused'
 });
 
+/** @type {Set<string>} */
 const VALID_GAME_STATES = new Set(Object.values(GAME_STATE));
 
+/** @param {*} value @returns {boolean} */
 function isGameState(value) {
   return VALID_GAME_STATES.has(value);
 }

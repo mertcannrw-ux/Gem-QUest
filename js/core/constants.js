@@ -1,4 +1,5 @@
-/* core/constants.js - shared runtime constants.
+/**
+ * @file core/constants.js - shared runtime constants.
  *
  * Non-state constants that were otherwise inlined across the runtime. State
  * values live in core/game-state.js; this file is for resolution, layout, and
@@ -12,6 +13,7 @@ const LOGICAL_HEIGHT = 720;
 
 // Backing-store render scale is clamped to this range so tiny windows still
 // render a detailed frame and huge displays stay within budget.
+/** @type {number} */
 const MAX_RENDER_SCALE = 3;
 const MIN_RENDER_SCALE = 1;
 

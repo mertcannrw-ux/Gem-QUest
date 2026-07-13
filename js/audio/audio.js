@@ -1,10 +1,60 @@
-/*
- * audio/audio.js - the public Audio facade. `sync(game)` builds a scene
- * description from the game state and feeds it into the shared engine state;
- * the returned `Audio` object exposes the same public surface that the rest of
- * the game calls. All implementation lives in the sibling audio modules.
+/**
+ * @file audio/audio.js - the public Audio facade.
+ *
+ * @typedef {Object} AudioFacade
+ * @property {(game: *) => void} sync
+ * @property {() => void} resume
+ * @property {(muted: boolean) => void} setMuted
+ * @property {() => boolean} isMuted
+ * @property {(v: number) => void} setVolume
+ * @property {() => number} getVolume
+ * @property {(v: number) => void} setMusicVolume
+ * @property {() => number} getMusicVolume
+ * @property {(v: number) => void} setSfxVolume
+ * @property {() => number} getSfxVolume
+ * @property {(v: number) => void} setAmbienceVolume
+ * @property {() => number} getAmbienceVolume
+ * @property {(v: boolean) => void} setReducedIntensity
+ * @property {() => boolean} getReducedIntensity
+ * @property {(v: boolean) => void} setMono
+ * @property {() => boolean} getMono
+ * @property {(v: boolean) => void} setCriticalCueBoost
+ * @property {() => boolean} getCriticalCueBoost
+ * @property {(id: string) => void} setMusicCandidate
+ * @property {() => string|null} getMusicCandidate
+ * @property {() => string[]} getMusicCandidates
+ * @property {(opts?: *) => void} hit
+ * @property {(opts?: *) => void} kill
+ * @property {(opts?: *) => void} shoot
+ * @property {(opts?: *) => void} shootBig
+ * @property {(opts?: *) => void} levelUp
+ * @property {(opts?: *) => void} coin
+ * @property {(opts?: *) => void} coinLot
+ * @property {(opts?: *) => void} explosion
+ * @property {(opts?: *) => void} hurt
+ * @property {(opts?: *) => void} select
+ * @property {(opts?: *) => void} deny
+ * @property {(opts?: *) => void} bossSpawn
+ * @property {(eventId?: string) => void} worldEvent
+ * @property {(opts?: *) => void} eventImpact
+ * @property {(opts?: *) => void} riftTeleport
+ * @property {(opts?: *) => void} eventCollect
+ * @property {(opts?: *) => void} eventAttune
+ * @property {(opts?: *) => void} eventComplete
+ * @property {(opts?: *) => void} lootboxOpen
+ * @property {(opts?: *) => void} victory
+ * @property {(id: string, opts?: *) => void} play
+ * @property {(opts?: *) => void} impact
+ * @property {(opts?: *) => void} enemyDeath
+ * @property {(opts?: *) => void} weaponFire
+ * @property {(opts?: *) => void} enemyAttack
+ * @property {(opts?: *) => void} danger
+ * @property {(opts?: *) => void} pickup
+ * @property {(opts?: *) => void} dash
+ * @property {(opts?: *) => void} reward
  */
 
+/** @param {*} game */
 function sync(game) {
   if (!game) return;
   const menuForge = game.state === GAME_STATE.SHOP && (game.shopReturnState === GAME_STATE.MENU || !game.stage);

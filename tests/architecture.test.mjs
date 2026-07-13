@@ -222,7 +222,7 @@ it('isProductionModule returns true for registered runtime paths', () => {
 });
 
 it('isProductionModule returns false for unknown paths', () => {
-  assert.equal(isProductionModule('js/nonexistent.js'), false);
+  assert.equal(isProductionModule('js/nonexistent.js'), false); // # skip-check-path
   assert.equal(isProductionModule('tests/foo.test.mjs'), false);
   assert.equal(isProductionModule('scripts/build.mjs'), false);
 });
