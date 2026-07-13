@@ -45,7 +45,7 @@ test('every gameplay item has matching high-resolution relic art', () => {
 });
 
 test('audio exposes contextual events and player-controlled mix/accessibility settings', () => {
-  const ctx = loadScripts(['js/utils.js', 'js/core/random.js', 'js/audio.js'], {
+  const ctx = loadScripts(['js/utils.js', 'js/core/random.js', 'js/audio/audio-context.js', 'js/audio/mixer.js', 'js/audio/music.js', 'js/audio/ambience.js', 'js/audio/sfx.js', 'js/audio/audio.js'], {
     localStorage: { getItem: () => null, setItem() {} }
   });
   const result = vm.runInContext(`

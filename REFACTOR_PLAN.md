@@ -1100,6 +1100,13 @@ firing. `npm run verify` stays green (115 tests).
 
 ## 19. Phase 12 — Split Audio Behind the Existing `Audio` Facade
 
+> **Status: ✅ COMPLETE** (committed in this session). `js/audio.js` was split into
+> `js/audio/{audio-context,mixer,music,ambience,sfx,audio}.js`. The engine closure
+> state was hoisted to module globals in `audio-context.js`; verb bodies were moved
+> verbatim; `Audio` (in `audio.js`) keeps the identical public surface and
+> `Audio.sync(game)` still builds the scene description. Old `js/audio.js` removed.
+> `tests/audio.test.mjs` added; `audio-routing`/`game` tests load the split modules.
+
 ### Goal
 
 Separate context lifecycle, mix settings, music, ambience, and SFX while

@@ -68,7 +68,7 @@ function buildContext(mock) {
     clearInterval: () => {},
     performance: { now: () => 0 }
   };
-  const ctx = loadScripts(['js/utils.js', 'js/audio.js'], additions);
+  const ctx = loadScripts(['js/utils.js', 'js/audio/audio-context.js', 'js/audio/mixer.js', 'js/audio/music.js', 'js/audio/ambience.js', 'js/audio/sfx.js', 'js/audio/audio.js'], additions);
   return ctx;
 }
 
