@@ -7,7 +7,8 @@
   RunDirector.prototype.createSanctuaryWells = function () {
     const p = this.game.player;
     if (!p) return;
-    const rotation = Math.random() * Math.PI * 2;
+    const random = runtimeRandom(this.game);
+    const rotation = random.range(0, Math.PI * 2);
     for (let i = 0; i < 3; i++) {
       const angle = rotation + i * Math.PI * 2 / 3;
       const distance = 180 + i * 38;
@@ -19,7 +20,7 @@
         chargeNeeded: 1.35,
         complete: false,
         playerInside: false,
-        phase: Math.random() * Math.PI * 2
+        phase: random.range(0, Math.PI * 2)
       });
     }
   };
@@ -86,7 +87,7 @@
         const b = this.sanctuaryWells[(i + 1) % this.sanctuaryWells.length];
         this.riftBolts.push({
           x1: a.x, y1: a.y, x2: b.x, y2: b.y,
-          life: 0.8, maxLife: 0.8, width: 34, seed: Math.random() * 1000,
+          life: 0.8, maxLife: 0.8, width: 34, seed: runtimeRandom(g, 'visual').range(0, 1000),
           color: '#86efac', core: '#ffffff'
         });
       }

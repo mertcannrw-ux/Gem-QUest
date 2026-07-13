@@ -95,7 +95,11 @@ const GAME_STATE_HANDLERS = {
 
       game.stage.update(dt, game);
 
-      for (const e of game.enemies) e.update(dt, game);
+      // Only update the enemies that existed when this phase began. Some AI
+      // behaviours summon into the same array; letting a growing collection
+      // extend its own iteration can create an unbounded same-frame cascade.
+      const enemyCount = game.enemies.length;
+      for (let i = 0; i < enemyCount; i++) game.enemies[i].update(dt, game);
       for (const p of game.projectiles) p.update(dt, game);
       for (const p of game.enemyProjectiles) p.update(dt, game);
       for (const lb of game.lootboxes) lb.update(dt, game);
@@ -244,5 +248,3 @@ const GAME_STATE_HANDLERS = {
     }
   }
 };
-
-export { GAME_STATE, VALID_GAME_STATES, GAME_STATE_HANDLERS, isGameState };

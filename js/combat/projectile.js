@@ -65,14 +65,18 @@ class Projectile {
         }
       }
     } else {
+      // Keep one owned stream for every probabilistic effect in this update.
+      // Chain lightning and boomerang return both use it below; defining it
+      // only inside the instant-kill branch made those rarer item effects
+      // throw a ReferenceError when they activated.
+      const rng = runtimeRandom(game);
       // Check enemy collision
       for (const e of game.enemies) {
         if (!e.alive || this.hitSet.has(e)) continue;
         if (Utils.distO(this, e) < this.size + e.size * 0.5) {
           this.hitSet.add(e);
           // Instant kill
-          const rng = game.simulationRandom || { next: Math.random };
-          if (rng.next() < (this.instantKill || 0)) {
+          if (rng.chance(this.instantKill || 0)) {
             e.hp = 0;
             e.die(this.owner, game);
           } else {

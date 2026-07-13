@@ -252,5 +252,3 @@ function pickItemRewards(owned, count = 3, rng = Math.random) {
 function xpToLevel(level) {
   return Math.round(8 * Math.pow(level - 1, 1.55) + 5);
 }
-
-export { RARITY, RARITY_ORDER, ITEMS, ITEM_IDS, weightedPick, pickItemRewards, xpToLevel };

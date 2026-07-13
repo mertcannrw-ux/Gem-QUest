@@ -90,6 +90,22 @@ for (const file of [join(root, 'index.html'), ...jsFiles]) {
   }
 }
 
+const simulationFiles = [
+  ...walkFiles(join(root, 'js', 'combat'), '.js'),
+  ...walkFiles(join(root, 'js', 'run'), '.js'),
+  join(root, 'js', 'player.js'),
+  join(root, 'js', 'stages.js'),
+  join(root, 'js', 'items.js'),
+];
+const uncontrolledSimulationRandom = simulationFiles.filter((file) =>
+  /\bMath\.random\s*\(/.test(readFileSync(file, 'utf8'))
+);
+if (uncontrolledSimulationRandom.length) {
+  throw new Error(`Direct Math.random() in simulation code:\n${
+    uncontrolledSimulationRandom.map((file) => `  ${relative(root, file)}`).join('\n')
+  }`);
+}
+
 // ---------------------------------------------------------------------------
 // 4. Dead declaration detection
 // ---------------------------------------------------------------------------
@@ -117,10 +133,6 @@ const declarations = [
 const intentionalPublicApis = new Set([
   'makeSeededRandom',    // exported for test determinism
   'seededNext',          // named function expression inside makeSeededRandom
-  'buildCombatContext',  // narrow context factory for subsystem conversion
-  'buildRunContext',     // narrow context factory for subsystem conversion
-  'buildRenderModel',    // narrow context factory for subsystem conversion
-  'buildUIActions',      // narrow context factory for subsystem conversion
 ]);
 const deadDeclarations = [...new Set(declarations)].filter((name) => {
   if (intentionalPublicApis.has(name)) return false;

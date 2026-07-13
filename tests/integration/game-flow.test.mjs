@@ -303,6 +303,49 @@ test('a rewarded ad revives from game over into playing', async () => {
   assert.equal(result.alive, true);
 });
 
+test('a rejected rewarded ad does not crash or consume the revive', async () => {
+  const { ctx } = buildContext();
+  const result = await run(ctx, `(async function () {
+    const g = makeGame();
+    g.state = 'gameover';
+    g.player = new Player();
+    g.player.items.phoenix = 1;
+    SDK.showAdRewarded = () => Promise.reject(new Error('network down'));
+    const revived = await g.reviveFromAd();
+    return {
+      revived,
+      state: g.state,
+      reviveUsed: g.reviveUsed,
+      adPending: g.adPending
+    };
+  })()`);
+  assert.equal(result.revived, false);
+  assert.equal(result.state, 'gameover');
+  assert.equal(result.reviveUsed, false);
+  assert.equal(result.adPending, false);
+});
+
+test('save failures are contained and reported as a non-fatal result', async () => {
+  const { ctx } = buildContext();
+  const saved = await run(ctx, `(async function () {
+    const g = makeGame();
+    g.meta.save = () => Promise.reject(new Error('storage unavailable'));
+    return g.persistMeta();
+  })()`);
+  assert.equal(saved, false);
+});
+
+test('guarded UI actions route exceptions through the fatal boundary', () => {
+  const { ctx } = buildContext();
+  const result = run(ctx, `(function () {
+    const g = makeGame();
+    g.renderFatalError = () => {};
+    g.runGuarded('test click', () => { throw new Error('broken handler'); });
+    return { fatal: g.fatalError?.message };
+  })()`);
+  assert.match(result.fatal, /test click: broken handler/);
+});
+
 // ===== Negative transitions =====
 
 test('game over cannot be entered twice', () => {

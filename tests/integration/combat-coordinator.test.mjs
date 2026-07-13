@@ -22,7 +22,7 @@ function buildContext() {
     window: {}
   };
   return loadScripts(
-    ['js/utils.js', 'js/content/items.js', 'js/content/enemies.js', 'js/content/stages.js', 'js/content/shop.js', 'js/content/lootboxes.js', 'js/core/constants.js', 'js/core/game-state.js', 'js/core/lifecycle.js', 'js/lootbox.js', 'js/combat/combat-coordinator.js'],
+    ['js/utils.js', 'js/core/random.js', 'js/content/items.js', 'js/content/enemies.js', 'js/content/stages.js', 'js/content/shop.js', 'js/content/lootboxes.js', 'js/core/constants.js', 'js/core/game-state.js', 'js/core/lifecycle.js', 'js/lootbox.js', 'js/combat/combat-coordinator.js', 'js/combat/enemy.js'],
     additions
   );
 }
@@ -93,4 +93,49 @@ test('handleEnemyDeath drops gems/coins and routes bosses to onBossKill', () => 
   const firstCall = drops.slice(0, 2).map((d) => d.kind).sort();
   assert.deepEqual(firstCall, ['coin', 'gem']);
   assert.equal(result.bossLootboxes, 1);
+});
+
+test('large explosion kill chains resolve iteratively without overflowing the stack', () => {
+  sdkCalls = []; drops = [];
+  const ctx = buildContext();
+  const result = vm.runInContext(`(() => {
+    const killer = {
+      kills: 0,
+      stats: () => ({
+        killHeal: 0, meteor: 0, explode: 20, lifesteal: 0
+      }),
+      heal() {}
+    };
+    const game = {
+      player: killer,
+      enemies: [],
+      particles: { spawnRing() {}, spawnBurst() {} },
+      shake: { trigger() {} },
+      director: { onEnemyKilled() {}, triggerStarfall() {} },
+      damageEnvironmentInRadius() {},
+      simulationRandom: makeRuntimeRandom(() => 0.99)
+    };
+    game.combat = new CombatCoordinator(game);
+    for (let i = 0; i < 2500; i++) {
+      const enemy = new Enemy('slime', 0, 0, game.simulationRandom);
+      enemy.hp = 1;
+      game.enemies.push(enemy);
+    }
+    game.enemies[0].takeDamage(10, killer, game);
+    return {
+      alive: game.enemies.filter((enemy) => enemy.alive).length,
+      kills: killer.kills
+    };
+  })()`, ctx);
+
+  assert.equal(result.alive, 0);
+  assert.equal(result.kills, 2500);
+});
+
+test('Enemy rejects unknown content ids with a descriptive error', () => {
+  const ctx = buildContext();
+  assert.throws(
+    () => vm.runInContext("new Enemy('missing-enemy', 0, 0)", ctx),
+    /Unknown enemy type: missing-enemy/
+  );
 });

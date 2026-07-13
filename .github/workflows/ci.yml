@@ -26,6 +26,13 @@ jobs:
       - run: npm run typecheck
       - run: npm test
 
+  full-verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [static-and-unit, browser-e2e, production-package, security]
+    steps:
+      - run: echo "All source, browser, and production-package gates passed."
+
   browser-e2e:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -67,9 +74,10 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci --ignore-scripts
+      - run: npm run build
       - run: npm audit --omit=dev
-        continue-on-error: true
       - name: Verify no dev artifacts in dist
         run: |
+          test -d dist/js
           ! grep -r "test-adapter" dist/js/ 2>/dev/null
           ! grep -r "__gemQuestTest" dist/js/ 2>/dev/null

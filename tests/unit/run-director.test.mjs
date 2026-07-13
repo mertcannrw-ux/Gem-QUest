@@ -114,11 +114,11 @@ test('director can update and record its first kill immediately after constructi
 test('starting a world event preserves timing, setup, and audio behavior', () => {
   const ctx = loadScripts(ROOT);
   const result = vm.runInContext(`(function(){
-    Math.random = () => 0;
     const audioCalls = [];
     globalThis.Audio = { worldEvent(id) { audioCalls.push(id); } };
     const game = {
       time: 0,
+      simulationRandom: makeRuntimeRandom(() => 0),
       player: { x: 100, y: 100, alive: true, items: {} },
       enemies: [],
       stage: { bossSpawned: false },

@@ -23,7 +23,15 @@ class StageManager {
   }
 
   startStage(index) {
-    this.index = index;
+    const requestedIndex = Math.floor(Number(index));
+    const safeIndex = Number.isFinite(requestedIndex)
+      ? Utils.clamp(requestedIndex, 0, STAGES.length - 1)
+      : 0;
+    const stage = STAGES[safeIndex];
+    if (!stage?.waves?.length) {
+      throw new Error(`Cannot start invalid stage ${String(index)}.`);
+    }
+    this.index = safeIndex;
     this.waveIdx = 0;
     this.waveTime = 0;
     this.stageTime = 0;
@@ -33,15 +41,19 @@ class StageManager {
     this.game.enemies.length = 0;
     this.game.enemyProjectiles.length = 0;
     this.spawnsDone = [];
-    const wave = STAGES[index].waves[0];
+    const wave = stage.waves[0];
     this.spawnTimers = wave.spawns.map(s => s.first ?? 0);
     this.game.stageTransition = null;
   }
 
   update(dt, game) {
     if (this.complete) return;
+    if (!Number.isFinite(dt) || dt <= 0) return;
     this.stageTime += dt;
     const stage = STAGES[this.index];
+    if (!stage?.waves?.length) {
+      throw new Error(`Stage ${this.index} has no playable wave data.`);
+    }
     const wave = stage.waves[this.waveIdx];
 
     // Guard: if waveIdx is past the end (boss already spawned), skip
@@ -85,20 +97,25 @@ class StageManager {
   spawnEnemy(type, forceElite = false) {
     const t = ENEMIES[type];
     const p = this.game.player;
+    if (!t || !p) {
+      console.warn(`Skipped invalid enemy spawn: ${String(type)}.`);
+      return null;
+    }
+    const random = runtimeRandom(this.game);
     // Spawn 350-500 pixels from player at random angle
-    const a = Math.random() * Math.PI * 2;
-    const d = 350 + Math.random() * 150;
+    const a = random.range(0, Math.PI * 2);
+    const d = random.range(350, 500);
     const x = p.x + Math.cos(a) * d;
     const y = p.y + Math.sin(a) * d;
-    const enemy = new Enemy(type, x, y);
+    const enemy = new Enemy(type, x, y, random);
     const eliteChance = 0.035 + this.index * 0.018 + Math.min(0.08, this.stageTime / 900);
-    if (forceElite || (!enemy.boss && Math.random() < eliteChance)) {
+    if (forceElite || (!enemy.boss && random.chance(eliteChance))) {
       // Aberrant mutations are intentionally headline moments: roughly one
       // in forty mutations early, rising slightly in later realms.
       const rareChance = forceElite ? 0.08 : 0.025 + this.index * 0.012;
-      const pool = Math.random() < rareChance ? RARE_MUTATIONS : COMMON_MUTATIONS;
-      const modifier = pool[Math.floor(Math.random() * pool.length)];
-      applyEliteModifier(enemy, modifier);
+      const pool = random.chance(rareChance) ? RARE_MUTATIONS : COMMON_MUTATIONS;
+      const modifier = random.pick(pool);
+      applyEliteModifier(enemy, modifier, random);
       this.game.particles.spawnRing(x, y, modifier.color, enemy.size * (modifier.rare ? 2.4 : 1.7));
       this.game.particles.spawnSparkBurst(x, y, modifier.color, modifier.rare ? 22 : 9);
       if (modifier.rare) {
@@ -114,9 +131,17 @@ class StageManager {
   spawnBoss(type) {
     const t = ENEMIES[type];
     const p = this.game.player;
+    if (!t || !p) {
+      throw new Error(`Cannot spawn invalid boss ${String(type)}.`);
+    }
     const a = -Math.PI / 2; // above player
     const d = 200;
-    this.game.enemies.push(new Enemy(type, p.x + Math.cos(a) * d, p.y + Math.sin(a) * d));
+    this.game.enemies.push(new Enemy(
+      type,
+      p.x + Math.cos(a) * d,
+      p.y + Math.sin(a) * d,
+      runtimeRandom(this.game)
+    ));
     Audio.play?.('boss.spawn', { x: p.x, y: p.y - 200 });
     this.game.shake.trigger(6);
   }

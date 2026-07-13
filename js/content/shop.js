@@ -7,5 +7,3 @@ const SHOP_UPGRADES = [
   { id: 'magnet', name: 'Magnetism', desc: '+10% pickup range',     cost: 50,  stat: 'pickupRange', amount: 0.10, max: 5 },
   { id: 'regen',  name: 'Recovery',  desc: '+0.5 HP/sec regen',     cost: 100, stat: 'regen', amount: 0.5, max: 6 }
 ];
-
-export { SHOP_UPGRADES };

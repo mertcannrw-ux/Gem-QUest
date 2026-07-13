@@ -11,7 +11,8 @@
     text(ctx, 'YOU DIED', logicalWidth(ctx) / 2, 100,
       { align: 'center', font: 'bold 64px sans-serif', color: '#dc2626', stroke: '#000' });
     const p = game.player;
-    text(ctx, 'Reached: ' + STAGES[game.stage.index].name,
+    const stageName = STAGES[game.stage?.index]?.name || 'Unknown Realm';
+    text(ctx, 'Reached: ' + stageName,
       logicalWidth(ctx) / 2, 200, { align: 'center', font: '20px sans-serif', color: '#fff' });
     text(ctx, 'Level ' + p.level + '  •  ' + p.kills + ' kills',
       logicalWidth(ctx) / 2, 240, { align: 'center', font: '18px sans-serif', color: '#7af0ff' });

@@ -24,11 +24,12 @@
   Enemy.prototype.updateRareMutation = function (dt, game, p, distanceToPlayer) {
     this.mutationTimer -= dt;
     if (this.mutationTimer > 0) return false;
+    const random = runtimeRandom(game);
 
     if (this.elite.id === 'riftborn') {
-      this.mutationTimer = 3.8 + Math.random() * 1.7;
+      this.mutationTimer = random.range(3.8, 5.5);
       const oldX = this.x, oldY = this.y;
-      const a = Math.atan2(p.y - this.y, p.x - this.x) + Utils.range(-0.8, 0.8);
+      const a = Math.atan2(p.y - this.y, p.x - this.x) + random.range(-0.8, 0.8);
       const range = Math.min(185, Math.max(100, distanceToPlayer * 0.42));
       this.x += Math.cos(a) * range;
       this.y += Math.sin(a) * range;
@@ -38,7 +39,7 @@
       game.particles.spawnSparkBurst(this.x, this.y, '#f5d0fe', 16);
       return true;
     } else if (this.elite.id === 'stormcaller') {
-      this.mutationTimer = 4.2 + Math.random() * 1.1;
+      this.mutationTimer = random.range(4.2, 5.3);
       const base = Math.atan2(p.y - this.y, p.x - this.x);
       for (let i = 0; i < 10; i++) {
         const a = base + i * Math.PI * 2 / 10;
@@ -54,11 +55,16 @@
       game.shake.trigger(3);
       Audio.play?.('enemy.attack', { x: this.x, y: this.y, kind: 'storm', power: 1 });
     } else if (this.elite.id === 'broodmother') {
-      this.mutationTimer = 5.5 + Math.random() * 1.8;
+      this.mutationTimer = random.range(5.5, 7.3);
       const childType = this.id === 'spider' ? 'spider' : (ENEMIES.slime ? 'slime' : this.id);
       for (let i = 0; i < 3; i++) {
         const a = i * Math.PI * 2 / 3 + this._wob;
-        const child = new Enemy(childType, this.x + Math.cos(a) * 42, this.y + Math.sin(a) * 42);
+        const child = new Enemy(
+          childType,
+          this.x + Math.cos(a) * 42,
+          this.y + Math.sin(a) * 42,
+          random
+        );
         child.maxHp = Math.max(4, Math.round(child.maxHp * 0.48));
         child.hp = child.maxHp;
         child.size *= 0.72;

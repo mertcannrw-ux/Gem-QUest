@@ -58,7 +58,7 @@
     );
     if (!targets.length) return false;
 
-    const target = targets[Math.floor(Math.random() * targets.length)];
+    const target = runtimeRandom(this.game).pick(targets);
     const damage = Math.max(28, baseDamage * 0.8);
     this.game.particles.spawnRing(target.x, target.y, '#fdba74', 88);
     this.game.particles.spawnBurst(target.x, target.y, '#fb923c', 24, 260);

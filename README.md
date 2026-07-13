@@ -49,9 +49,10 @@ npm run verify
 ```
 
 `npm run verify` performs JavaScript syntax checks, validates source and built
-asset references, rejects unsafe browser APIs and obsolete SDK calls, enforces
-platform size/file limits, and runs the automated unit + server security tests.
-GitHub Actions runs the same command for every pull request and push to `main`.
+asset references, rejects unsafe browser APIs and obsolete SDK calls, checks
+the current typed subset, enforces platform size/file limits, and runs the
+automated unit, integration, server-security, and Playwright browser tests.
+GitHub Actions runs equivalent gates for every pull request and push to `main`.
 
 ## 📂 Project Structure
 
@@ -89,6 +90,8 @@ Gem-Quest/
 
 `Game` primarily wires services and state handlers; `UI`, `Audio`, `Sprite`,
 and `RunDirector` are facades/coordinators over the focused modules above.
+Gameplay decisions consume the `Game`-owned `simulationRandom` stream, while
+presentation-only effects may use `visualRandom` or service-local randomness.
 
 ## 🏗️ Architecture
 
@@ -177,8 +180,7 @@ catalogs under `js/content/` — `items.js`, `enemies.js`, `stages.js`,
 
 ## 🏗 Architecture
 
-The codebase follows a layered architecture (7 layers, each depending only on
-lower-numbered layers):
+The codebase has a documented target layering model:
 
 | Layer | Directory | Responsibility |
 |-------|-----------|----------------|
@@ -190,15 +192,16 @@ lower-numbered layers):
 | 6 | `js/render/`, `js/audio/`, `js/ui/` | Rendering, audio, UI screens |
 | 7 | `js/game.js`, `js/main.js` | Application orchestration, bootstrap |
 
-Each subsystem receives narrow contexts (combat, run, render, UI) instead of
-the full mutable Game object. Renderers receive read-only models; UI screens
-receive view models + action callbacks.
+The current classic-script runtime still passes the mutable `Game` object
+through several simulation and presentation boundaries. Narrow subsystem
+contexts and explicit dependency enforcement remain follow-up work for the
+native-module migration described in `plan.md`.
 
 ### Module system
 
-- Runtime files use classic scripts with ES module exports (transitional).
-- The test harness (`tests/helpers/load-classic-scripts.mjs`) strips `export`
-  statements before VM execution for backward compat.
+- Runtime files are classic scripts with no `import` or `export` syntax.
+- `index.html` is the authoritative dependency order. The architecture check
+  verifies that its runtime script inventory and order match the manifest.
 - After full ESM migration, the HTML will load a single `<script type="module">`.
 
 ## 🧪 Testing
@@ -209,7 +212,6 @@ receive view models + action callbacks.
 | Integration | `node --test` | `npm test` |
 | Architecture | `node --test` | `npm test` |
 | Browser E2E | Playwright | `npm run test:e2e` |
-| Coverage | c8 | `npm run test:coverage` |
 
 ### Test layout
 
@@ -221,11 +223,16 @@ tests/
   helpers/         # VM script-loading harness
 ```
 
-### Coverage thresholds (final target)
+### Coverage thresholds (future target)
 - Lines: 90%
 - Functions: 90%
 - Branches: 85%
 - Statements: 90%
+
+Coverage enforcement is intentionally not exposed as a passing command yet:
+the current Node tests execute classic scripts inside `vm` contexts, which the
+previous c8 setup reported as 0% even while tests exercised the code. Add a
+real coverage gate after tests import native ES modules directly.
 
 ## 🔧 Development
 
@@ -264,7 +271,8 @@ MIT — do whatever you want, just don't blame us if a slime kills your run.
 
 ## 🎮 Made With
 
-- Vanilla JavaScript (ES2020+) with checked JSDoc type safety
+- Vanilla JavaScript (ES2020+) with strict checked-JSDoc coverage expanding
+  incrementally from core contracts and content catalogs
 - HTML5 Canvas 2D
 - Web Audio API (procedural audio, no audio files)
 - Procedural pixel-art rendering (no external sprite sheets)

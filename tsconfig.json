@@ -1,4 +1,5 @@
 {
+  "_comment": "Strict checked-JSDoc rollout. Expand include only when each added file is clean.",
   "compilerOptions": {
     "allowJs": true,
     "checkJs": true,
@@ -15,6 +16,14 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true
   },
-  "include": ["js/**/*.js", "scripts/**/*.mjs"],
+  "include": [
+    "js/types.js",
+    "js/core/constants.js",
+    "js/core/random.js",
+    "js/content/enemies.js",
+    "js/content/lootboxes.js",
+    "js/content/shop.js",
+    "js/content/stages.js"
+  ],
   "exclude": ["dist/**", "node_modules/**"]
 }

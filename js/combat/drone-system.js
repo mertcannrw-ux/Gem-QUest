@@ -8,16 +8,17 @@ Player.prototype.updateDrones = function (dt, game, s) {
   // Drones
   if (s.drones > 0) {
     const singularity = game.director.hasSynergy('singularity');
+    const random = runtimeRandom(game);
     // Update existing drones
     this.droneTimer = (this.droneTimer || 0) - dt;
     // Ensure we have the right number
     while (this.drones.length < s.drones) {
       this.drones.push({
-        angle: Math.random() * Math.PI * 2,
-        fire: Math.random() * 0.25,
+        angle: random.range(0, Math.PI * 2),
+        fire: random.range(0, 0.25),
         aim: this.facing,
         recoil: 0,
-        phase: Math.random() * Math.PI * 2
+        phase: random.range(0, Math.PI * 2)
       });
     }
     while (this.drones.length > s.drones) this.drones.pop();

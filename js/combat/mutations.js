@@ -4,7 +4,7 @@
  * and the mutation tests. The mutation *data* (ELITE_MODIFIERS) stays in
  * mechanics.js pending the content-data split in a later phase.
  */
-function applyEliteModifier(enemy, modifier) {
+function applyEliteModifier(enemy, modifier, random = createProductionRandom()) {
   if (!enemy || !modifier || enemy.boss) return enemy;
   enemy.elite = modifier;
   enemy.maxHp = Math.round(enemy.maxHp * modifier.hp);
@@ -16,8 +16,8 @@ function applyEliteModifier(enemy, modifier) {
   enemy.size *= modifier.size || 1.16;
   enemy.mutationScale = modifier.size || 1.16;
   enemy.mutationTier = modifier.tier || 'mutated';
-  enemy.mutationTimer = 1.8 + Math.random() * 1.2;
-  enemy.mutationPulse = Math.random() * Math.PI * 2;
+  enemy.mutationTimer = random.range(1.8, 3);
+  enemy.mutationPulse = random.range(0, Math.PI * 2);
   enemy.projectileResistance = modifier.projectileResistance || 0;
   return enemy;
 }

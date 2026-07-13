@@ -80,7 +80,6 @@
  *   hp: number,
  *   maxHp: number,
  *   alive: boolean,
- *   alive: boolean,
  *   size: number,
  *   speed: number,
  *   dmg: number,

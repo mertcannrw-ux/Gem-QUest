@@ -68,5 +68,3 @@ const ENEMIES = {
     ai: 'boss_dragon', boss: true, waves: 99, audioMaterial: 'dragon'
   }
 };
-
-export { ENEMIES };

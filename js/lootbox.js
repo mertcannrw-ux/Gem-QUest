@@ -42,7 +42,11 @@ class Lootbox {
 
   open(game) {
     this.opened = true;
-    this.choices = pickItemRewards(game.player.items, this.rarity.count);
+    this.choices = pickItemRewards(
+      game.player.items,
+      this.rarity.count,
+      () => runtimeRandom(game).next()
+    );
     if (!this.choices.length) {
       const fallbackCoins = this.rarityId === 'gold' ? 150 : this.rarityId === 'silver' ? 75 : 40;
       game.player.addCoins(fallbackCoins);

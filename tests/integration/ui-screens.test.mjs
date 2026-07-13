@@ -4,7 +4,7 @@ import vm from 'node:vm';
 import { readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { loadScripts, stripExports } from '../helpers/load-classic-scripts.mjs';
+import { loadScripts } from '../helpers/load-classic-scripts.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -88,8 +88,7 @@ const FILES = [
 
 function loadAll(ctx) {
   for (const f of FILES) {
-    let code = readFileSync(resolve(root, f), 'utf8');
-    if (stripExports) code = stripExports(code);
+    const code = readFileSync(resolve(root, f), 'utf8');
     vm.runInContext(code, ctx, { filename: f });
   }
 }

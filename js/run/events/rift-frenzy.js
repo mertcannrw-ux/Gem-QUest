@@ -8,17 +8,18 @@
     const p = this.game.player;
     if (!p) return;
     const count = 5;
-    const rotation = Math.random() * Math.PI * 2;
+    const random = runtimeRandom(this.game);
+    const rotation = random.range(0, Math.PI * 2);
     for (let i = 0; i < count; i++) {
-      const angle = rotation + i * Math.PI * 2 / count + Utils.range(-0.2, 0.2);
-      const distance = 245 + (i % 2) * 105 + Math.random() * 55;
+      const angle = rotation + i * Math.PI * 2 / count + random.range(-0.2, 0.2);
+      const distance = 245 + (i % 2) * 105 + random.range(0, 55);
       this.riftNodes.push({
         id: i,
         x: p.x + Math.cos(angle) * distance,
         y: p.y + Math.sin(angle) * distance,
         radius: 44,
-        phase: Math.random() * Math.PI * 2,
-        pulse: Math.random(),
+        phase: random.range(0, Math.PI * 2),
+        pulse: random.next(),
         entered: 0
       });
     }
@@ -83,7 +84,7 @@
 
     this.riftBolts.push({
       x1: oldX, y1: oldY, x2: p.x, y2: p.y,
-      life: 0.48, maxLife: 0.48, width, seed: Math.random() * 1000,
+      life: 0.48, maxLife: 0.48, width, seed: runtimeRandom(g, 'visual').range(0, 1000),
       color: '#f5d0fe', core: '#ffffff'
     });
 
@@ -99,7 +100,7 @@
       enemy.takeDamage(damage * 0.62, p, g);
       this.riftBolts.push({
         x1: chainX, y1: chainY, x2: enemy.x, y2: enemy.y,
-        life: 0.36, maxLife: 0.36, width: 28, seed: Math.random() * 1000,
+        life: 0.36, maxLife: 0.36, width: 28, seed: runtimeRandom(g, 'visual').range(0, 1000),
         color: '#67e8f9', core: '#ecfeff'
       });
       chainX = enemy.x;

@@ -64,14 +64,16 @@
   // Input
   Input.attachMouse(canvas);
   Input.attachTouch(canvas);
-  window.addEventListener('keydown', (e) => game.handleKey(e.key.toLowerCase()));
+  window.addEventListener('keydown', (e) =>
+    game.runGuarded('keyboard input', () => game.handleKey(e.key.toLowerCase()))
+  );
 
   // Click handlers receive logical-space coordinates
   game.onClick = function (e) {
     const r = canvas.getBoundingClientRect();
     const mx = (e.clientX - r.left) * (game.vw / r.width);
     const my = (e.clientY - r.top) * (game.vh / r.height);
-    game.handleClick(mx, my);
+    game.runGuarded('pointer input', () => game.handleClick(mx, my));
   };
 
   // Start the game loop right away so the canvas renders
@@ -111,8 +113,10 @@
   // Auto-pause when tab hidden (Crazy Games pauses for ads, but we
   // should also pause when the tab is backgrounded to save CPU).
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden && game.state === GAME_STATE.PLAYING) {
-      game.transitionTo(GAME_STATE.PAUSED, { storePrevious: true });
-    }
+    game.runGuarded('visibility change', () => {
+      if (document.hidden && game.state === GAME_STATE.PLAYING) {
+        game.transitionTo(GAME_STATE.PAUSED, { storePrevious: true });
+      }
+    });
   });
 })();

@@ -5,9 +5,9 @@
  * environmentHash / environmentRandom are pure functions of integer world
  * coordinates used by the terrain renderer and the environment system.
  *
- * makeRuntimeRandom creates a controlled random interface with separate
- * streams for simulation and visual randomness.  Production uses
- * Math.random; tests may pass a seed for deterministic sequences.
+ * makeRuntimeRandom creates a controlled random interface. Production streams
+ * receive independent seeds from Math.random; tests may pass a fixed seed for
+ * deterministic sequences.
  */
 
 /**
@@ -28,16 +28,44 @@ function makeRuntimeRandom(nextFn) {
     range(min, max) { return min + nextFn() * (max - min); },
     int(min, max) { return Math.floor(min + nextFn() * (max - min + 1)); },
     chance(probability) { return nextFn() < probability; },
-    pick(items) { return items[Math.floor(nextFn() * items.length)]; }
+    pick(items) {
+      if (items.length === 0) throw new RangeError('Cannot pick from an empty collection.');
+      return /** @type {any} */ (items[Math.floor(nextFn() * items.length)]);
+    }
   };
 }
 
 /**
- * Create a production RuntimeRandom backed by Math.random.
+ * Create an independently seeded production RuntimeRandom.
  * @returns {ReturnType<typeof makeRuntimeRandom>}
  */
 function createProductionRandom() {
-  return makeRuntimeRandom(Math.random);
+  return makeSeededRandom(Math.floor(Math.random() * 0x100000000));
+}
+
+/**
+ * Return a game-owned random stream, with a production fallback for isolated
+ * entities and lightweight test doubles.
+ *
+ * @param {*} owner
+ * @param {'simulation'|'visual'} [channel]
+ * @returns {ReturnType<typeof makeRuntimeRandom>}
+ */
+function runtimeRandom(owner, channel = 'simulation') {
+  const property = channel === 'visual' ? 'visualRandom' : 'simulationRandom';
+  const stream = owner?.[property];
+  if (!stream) return FALLBACK_RUNTIME_RANDOM;
+  if (typeof stream.range === 'function' &&
+      typeof stream.int === 'function' &&
+      typeof stream.chance === 'function' &&
+      typeof stream.pick === 'function') {
+    return stream;
+  }
+  if (typeof stream.next === 'function') {
+    return makeRuntimeRandom(() => stream.next());
+  }
+  console.warn(`Invalid ${property}; using the fallback random stream.`);
+  return FALLBACK_RUNTIME_RANDOM;
 }
 
 /**
@@ -57,6 +85,13 @@ function makeSeededRandom(seed) {
   });
 }
 
+var FALLBACK_RUNTIME_RANDOM = createProductionRandom();
+
+/**
+ * @param {number} x
+ * @param {number} y
+ * @param {number} [salt]
+ */
 function environmentHash(x, y, salt = 0) {
   let h = Math.imul(x | 0, 374761393) + Math.imul(y | 0, 668265263) + Math.imul(salt | 0, 69069);
   h = (h ^ (h >>> 13)) >>> 0;
@@ -64,8 +99,11 @@ function environmentHash(x, y, salt = 0) {
   return (h ^ (h >>> 16)) >>> 0;
 }
 
+/**
+ * @param {number} x
+ * @param {number} y
+ * @param {number} [salt]
+ */
 function environmentRandom(x, y, salt = 0) {
   return environmentHash(x, y, salt) / 4294967295;
 }
-
-export { makeRuntimeRandom, createProductionRandom, makeSeededRandom, environmentHash, environmentRandom };

@@ -61,7 +61,12 @@ Enemy.prototype.bossVampire = function (dt, p, game, sp) {
     // Summon 3 skeletons
     for (let i = 0; i < 3; i++) {
       const a = i / 3 * Math.PI * 2;
-      game.enemies.push(new Enemy('skeleton', this.x + Math.cos(a) * 60, this.y + Math.sin(a) * 60));
+      game.enemies.push(new Enemy(
+        'skeleton',
+        this.x + Math.cos(a) * 60,
+        this.y + Math.sin(a) * 60,
+        runtimeRandom(game)
+      ));
     }
     game.particles.spawnRing(this.x, this.y, '#9f1239', 60);
     Audio.play?.('enemy.attack', { x: this.x, y: this.y, kind: 'summon', boss: true });

@@ -122,7 +122,7 @@ class TerrainRenderer {
   // Distant parallax: subtle drifting stars / dust / mist
   drawParallaxBack(ctx) {
     const t = this.game.time;
-    const stageId = this.game.stage ? STAGES[this.game.stage.index].id : null;
+    const stageId = this.game.stage ? STAGES[this.game.stage.index]?.id : null;
     if (stageId === 'caves') {
       // Crystals glint
       for (let i = 0; i < 14; i++) {

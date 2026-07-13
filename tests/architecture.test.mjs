@@ -21,6 +21,7 @@ import {
   MODULE_LAYER,
   LAYER,
   ENTRYPOINTS,
+  parseHtmlScriptSources,
   parseImports,
   checkArchitecture,
   isProductionModule,
@@ -81,6 +82,18 @@ it('parseImports extracts local .js import paths and ignores external URLs', () 
 it('parseImports returns empty array for a file with no imports', () => {
   const refs = parseImports('var x = 1;', '/root/file.js');
   assert.deepEqual(refs, []);
+});
+
+it('parseHtmlScriptSources preserves local runtime script order', () => {
+  const scripts = parseHtmlScriptSources(`
+    <script src="https://example.com/sdk.js"></script>
+    <script defer src="./fixtures/first.js?v=1"></script>
+    <script defer src="fixtures/second.js"></script>
+  `);
+  assert.deepEqual(scripts, [
+    'fixtures/first.js',
+    'fixtures/second.js',
+  ]);
 });
 
 // ---------------------------------------------------------------------------
@@ -231,9 +244,7 @@ it('isProductionModule returns false for unknown paths', () => {
 // checkArchitecture integration smoke test
 // ---------------------------------------------------------------------------
 
-it('checkArchitecture runs against the real repo without throwing', () => {
-  // This is a smoke test that simply verifies the real repo passes.
-  // The actual check is already run by `npm run check`.
-  // We just assert the function exists and runs without error.
-  assert.ok(typeof checkArchitecture === 'function');
+it('checkArchitecture verifies the real browser script inventory and order', () => {
+  const root = resolve(import.meta.dirname, '..');
+  assert.equal(checkArchitecture(root, { fatal: true }), true);
 });

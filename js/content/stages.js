@@ -96,5 +96,3 @@ const STAGES = [
     reward: { coins: 500, lootbox: 'gold' }
   }
 ];
-
-export { STAGES };

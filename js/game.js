@@ -17,6 +17,7 @@ class Game {
   constructor(canvas) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d', { alpha: false });
+    if (!this.ctx) throw new Error('Canvas 2D rendering is unavailable.');
 
     // Fixed logical coordinates keep gameplay deterministic while resize()
     // adapts the backing store to the actual physical display resolution.
@@ -81,21 +82,29 @@ class Game {
     // Resize
     this.viewport = new CanvasViewport(this.canvas, this.ctx, this.vw, this.vh);
     this.resize();
-    window.addEventListener('resize', () => this.resize());
-    window.visualViewport?.addEventListener('resize', () => this.resize());
+    window.addEventListener('resize', () => this.runGuarded('resize', () => this.resize()));
+    window.visualViewport?.addEventListener('resize', () =>
+      this.runGuarded('visual viewport resize', () => this.resize())
+    );
 
     // Click handling
-    this.canvas.addEventListener('click', (e) => this.onClick(e));
+    this.canvas.addEventListener('click', (e) =>
+      this.runGuarded('pointer click', () => this.onClick(e))
+    );
     this.canvas.addEventListener('mousemove', (e) => {
-      // Track mouse in logical space for hover detection
-      this.mouseLogical = this.viewport.pointerToLogical(e.clientX, e.clientY);
+      this.runGuarded('pointer movement', () => {
+        // Track mouse in logical space for hover detection
+        this.mouseLogical = this.viewport.pointerToLogical(e.clientX, e.clientY);
+      });
     });
     // Touch fallback: tap = click
     this.canvas.addEventListener('touchend', (e) => {
       const t = e.changedTouches[0];
       if (!t) return;
-      const p = this.viewport.pointerToLogical(t.clientX, t.clientY);
-      this.handleClick(p.x, p.y);
+      this.runGuarded('touch input', () => {
+        const p = this.viewport.pointerToLogical(t.clientX, t.clientY);
+        this.handleClick(p.x, p.y);
+      });
       e.preventDefault();
     }, { passive: false });
   }
@@ -381,8 +390,28 @@ class Game {
     if (handler && handler.key) handler.key(this, k);
   }
 
+  runGuarded(source, action) {
+    if (this.fatalError) return undefined;
+    try {
+      return action();
+    } catch (error) {
+      const wrapped = error instanceof Error ? error : new Error(String(error));
+      wrapped.message = `${source}: ${wrapped.message}`;
+      this.handleFatalError(wrapped);
+      return undefined;
+    }
+  }
+
   async persistMeta() {
-    await this.meta.save();
+    try {
+      await this.meta.save();
+      return true;
+    } catch (error) {
+      // Persistence is important, but a transient platform/cloud failure must
+      // never terminate an otherwise healthy run.
+      console.warn('Save failed; gameplay will continue:', error);
+      return false;
+    }
   }
 
   syncMetaFromPlayer() {
@@ -418,7 +447,7 @@ class Game {
   }
 
   async reviveFromAd() {
-    if (this.state !== GAME_STATE.GAME_OVER || this.reviveUsed || this.adPending || !this.player) return;
+    if (this.state !== GAME_STATE.GAME_OVER || this.reviveUsed || this.adPending || !this.player) return false;
     const wasMuted = Audio.isMuted();
     this.adPending = true;
     let result;
@@ -429,11 +458,14 @@ class Game {
           Audio.setMuted(true);
         }
       });
+    } catch (error) {
+      console.warn('Rewarded ad failed; revive was not consumed:', error);
+      return false;
     } finally {
       this.adPending = false;
       Audio.setMuted(wasMuted);
     }
-    if (!result.completed || this.state !== GAME_STATE.GAME_OVER) return;
+    if (!result?.completed || this.state !== GAME_STATE.GAME_OVER) return false;
     if (this.player.revive(0.5)) {
       this.reviveUsed = true;
       this.world.clearHostileProjectiles();
@@ -444,13 +476,19 @@ class Game {
       this.particles.spawnBurst(this.player.x, this.player.y, '#7af0ff', 35, 240);
       Audio.play?.('reward.reveal', { rarity: 'legendary', x: this.player.x, y: this.player.y });
       this.transitionTo(GAME_STATE.PLAYING);
+      return true;
     }
+    return false;
   }
 
   // ===== Main loop =====
   // Run a single frame through the GameLoop driver. The loop keeps scheduling
   // itself via requestAnimationFrame until a fatal error stops it.
   loop(now) {
+    // main.js starts the driver through this compatibility entry point. Treat
+    // repeated calls like GameLoop.start(): a second caller must not create a
+    // parallel requestAnimationFrame chain.
+    if (this._loop?.running) return;
     if (!this._loop) {
       this._loop = new GameLoop({
         update: (dt) => this.update(dt),
@@ -460,6 +498,7 @@ class Game {
       });
     }
     this._loop.running = true;
+    this._loop.lastTime = 0;
     this._loop.frame(now);
   }
 
@@ -469,7 +508,9 @@ class Game {
     GameLifecycle.leaveInteractivePlay();
     console.error('Fatal game loop error:', this.fatalError);
     try { this.renderFatalError(); } catch (_) {}
-    if (typeof window?.dispatchEvent === 'function' && typeof CustomEvent === 'function') {
+    if (typeof window !== 'undefined' &&
+        typeof window.dispatchEvent === 'function' &&
+        typeof CustomEvent === 'function') {
       window.dispatchEvent(new CustomEvent('gemquest:fatal', {
         detail: { message: 'An unexpected runtime error stopped the current run safely.' }
       }));

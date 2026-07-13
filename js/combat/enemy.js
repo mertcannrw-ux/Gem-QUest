@@ -18,8 +18,9 @@ function lineMutation(ctx, points, color, width = 2) {
 }
 
 class Enemy {
-  constructor(typeId, x, y) {
+  constructor(typeId, x, y, random = createProductionRandom()) {
     const t = ENEMIES[typeId];
+    if (!t) throw new Error(`Unknown enemy type: ${String(typeId)}`);
     Object.assign(this, t);
     this.x = x; this.y = y;
     this.maxHp = t.hp;
@@ -33,7 +34,7 @@ class Enemy {
     this.slowAmount = 0;
     this.poisonStacks = [];
     this.burnStacks = [];
-    this._wob = Math.random() * Math.PI * 2;
+    this._wob = random.range(0, Math.PI * 2);
   }
 
   takeDamage(amount, from, game) {
@@ -57,6 +58,10 @@ class Enemy {
 
   die(killer, game) {
     if (!this.alive) return;
+    if (game?.combat?.resolveEnemyDeath && !game.combat.isFinalizingDeath(this)) {
+      game.combat.resolveEnemyDeath(this, killer);
+      return;
+    }
     this.alive = false;
     Audio.play?.('enemy.death', {
       x: this.x, y: this.y,
@@ -75,7 +80,7 @@ class Enemy {
     // Kill heal (Soul Gem)
     if (killerStats && killerStats.killHeal > 0) killer.heal(killerStats.killHeal);
     // Meteor chance
-    if (killerStats && killerStats.meteor > 0 && Math.random() < killerStats.meteor && game) {
+    if (killerStats && killerStats.meteor > 0 && runtimeRandom(game).chance(killerStats.meteor) && game) {
       game.particles.spawnRing(this.x, this.y, '#fb923c', 60);
       game.shake.trigger(3);
       // AoE damage
@@ -207,9 +212,10 @@ class Enemy {
       case 'teleport': {
         this.teleportTimer -= dt;
         if (this.teleportTimer <= 0) {
-          this.teleportTimer = 1.5 + Math.random();
+          const random = runtimeRandom(game);
+          this.teleportTimer = random.range(1.5, 2.5);
           // Teleport to a position 200-300 from player, in random direction
-          const a = Math.random() * Math.PI * 2;
+          const a = random.range(0, Math.PI * 2);
           const dist = 220;
           this.x = p.x + Math.cos(a) * dist;
           this.y = p.y + Math.sin(a) * dist;

@@ -9,7 +9,7 @@
     if (!this.bounty && this.bountyTimer <= 0 && this.game.enemies.length) {
       const candidates = this.game.enemies.filter(e => e.alive && !e.boss);
       if (candidates.length) {
-        this.bounty = candidates[Math.floor(Math.random() * candidates.length)];
+        this.bounty = runtimeRandom(this.game).pick(candidates);
         this.bounty.isBounty = true;
         this.bountyTimer = 24;
         this.showBanner('BOUNTY MARKED', `Hunt the ${this.bounty.name}`, '#f472b6', 2.4);

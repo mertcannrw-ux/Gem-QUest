@@ -3,7 +3,7 @@ import vm from 'node:vm';
 import test from 'node:test';
 import { loadScripts } from '../helpers/load-classic-scripts.mjs';
 
-const ROOT = ['js/utils.js', 'js/combat/projectile.js'];
+const ROOT = ['js/utils.js', 'js/core/random.js', 'js/combat/projectile.js'];
 
 test('projectiles cannot tunnel through solid environment objects mid-segment', () => {
   const ctx = loadScripts(ROOT);
@@ -86,4 +86,72 @@ test('player projectiles damage the first enemy they overlap', () => {
   })()`, ctx);
   assert.equal(result.enemyDmg, 15, 'the enemy should take the projectile damage');
   assert.equal(result.dead, true, 'a non-piercing hit consumes the projectile');
+});
+
+test('chain lightning uses the owned random stream without crashing', () => {
+  const ctx = loadScripts(ROOT, {
+    Audio: { play() {} }
+  });
+  const result = vm.runInContext(`(() => {
+    const hits = [];
+    const first = {
+      x: 0, y: 0, size: 20, alive: true, slowAmount: 0,
+      takeDamage: (d) => hits.push(['first', d]),
+      applyEffect() {}
+    };
+    const second = {
+      x: 50, y: 0, size: 20, alive: true, slowAmount: 0,
+      takeDamage: (d) => hits.push(['second', d]),
+      applyEffect() {}
+    };
+    const game = {
+      simulationRandom: makeRuntimeRandom(() => 0),
+      traceEnvironmentHit: () => null,
+      damageEnvironmentObject() {},
+      particles: {
+        spawnBurst() {}, spawnRing() {}, spawnSparkBurst() {},
+        spawnFloat() {}, spawnCrit() {}
+      },
+      enemies: [first, second],
+      player: { x: 100, y: 100 },
+      director: { hasSynergy: () => false },
+      settings: {}
+    };
+    const proj = new Projectile({
+      x: 0, y: 0, vx: 0, vy: 0, size: 6, enemy: false,
+      dmg: 20, chain: 1, owner: {}
+    });
+    proj.update(0.1, game);
+    return hits;
+  })()`, ctx);
+
+  assert.deepEqual(
+    Array.from(result, (entry) => Array.from(entry)),
+    [['first', 20], ['second', 10]]
+  );
+});
+
+test('boomerang return uses the owned random stream without crashing', () => {
+  const ctx = loadScripts(ROOT);
+  const result = vm.runInContext(`(() => {
+    const game = {
+      simulationRandom: makeRuntimeRandom(() => 0),
+      traceEnvironmentHit: () => null,
+      damageEnvironmentObject() {},
+      particles: { spawnSparkBurst() {} },
+      enemies: [],
+      player: { x: 100, y: 0, r: 10 },
+      director: null,
+      settings: {}
+    };
+    const proj = new Projectile({
+      x: 0, y: 0, vx: 0, vy: 0, size: 6, enemy: false,
+      dmg: 10, life: 1, returnChance: 1, owner: {}
+    });
+    proj.update(0.1, game);
+    return { returning: proj.returning, vx: proj.vx };
+  })()`, ctx);
+
+  assert.equal(result.returning, true);
+  assert.ok(result.vx > 0);
 });

@@ -1,9 +1,13 @@
 /**
  * architecture.mjs — Module ownership manifest and dependency-rule checker.
  *
- * Defines every production runtime module, its layer, and which lower
- * layers it may import from.  Also provides a graph walker that reports
- * cycles, layer violations, and unreachable modules.
+ * Defines every production runtime script and its intended layer. The current
+ * browser runtime still uses ordered classic scripts, so the enforceable
+ * production check is script inventory/order consistency with index.html.
+ *
+ * Import-graph helpers remain available (and tested) for the later native-ESM
+ * migration. Cycle, reachability, and layer-edge checks are only meaningful
+ * once production files contain explicit imports.
  *
  * Layer numbering (higher = farther from hardware):
  *   1  core / pure helpers
@@ -149,7 +153,7 @@ export const MODULE_LAYER = Object.freeze(
 // Entrypoints
 // ---------------------------------------------------------------------------
 
-/** Entrypoint files used by the browser (index.html script tags in order). */
+/** Runtime files used by the browser (index.html classic script tags in order). */
 export const ENTRYPOINTS = Object.freeze([
   'js/sdk-loader.js',
   'js/utils.js',
@@ -273,6 +277,17 @@ export function parseImports(source, filePath) {
     refs.push(resolved);
   }
   return refs;
+}
+
+/**
+ * Extract local JavaScript sources from HTML in document order.
+ * @param {string} html
+ */
+export function parseHtmlScriptSources(html) {
+  return [...html.matchAll(/<script\b[^>]*\bsrc=["']([^"']+\.js)(?:[?#][^"']*)?["'][^>]*>/gi)]
+    .map((match) => match[1])
+    .filter((source) => !/^(?:https?:)?\/\//i.test(source))
+    .map((source) => source.replace(/^\.\//, ''));
 }
 
 /**
@@ -417,14 +432,61 @@ export function checkArchitecture(root, { fatal = false } = {}) {
       try { return !statSync(resolve(root, relPath)).isFile(); } catch { return true; }
     });
 
-  if (missing.length && fatal) {
-    throw new Error(`Missing production modules:\n  ${missing.join('\n  ')}`);
-  }
   if (missing.length) {
-    console.log(`⚠  Missing production modules (will not be checked):\n  ${missing.join('\n  ')}`);
+    const msg = `Missing production modules:\n  ${missing.join('\n  ')}`;
+    if (fatal) throw new Error(msg);
+    console.log(`❌ ${msg}`);
+    return false;
   }
 
+  const indexScripts = parseHtmlScriptSources(readFileSync(resolve(root, 'index.html'), 'utf8'));
+  const orderMatches = indexScripts.length === ENTRYPOINTS.length
+    && indexScripts.every((script, index) => script === ENTRYPOINTS[index]);
+  if (!orderMatches) {
+    const msg = [
+      'index.html runtime script order does not match the architecture manifest.',
+      `Manifest (${ENTRYPOINTS.length}): ${ENTRYPOINTS.join(', ')}`,
+      `HTML (${indexScripts.length}): ${indexScripts.join(', ')}`,
+    ].join('\n');
+    if (fatal) throw new Error(msg);
+    console.log(`❌ ${msg}`);
+    return false;
+  }
+
+  const unregistered = indexScripts.filter((script) => !ALL_PRODUCTION_MODULES.has(script));
+  const unloaded = [...ALL_PRODUCTION_MODULES].filter((script) => !indexScripts.includes(script));
+  if (unregistered.length || unloaded.length) {
+    const msg = [
+      unregistered.length ? `Unregistered browser scripts: ${unregistered.join(', ')}` : '',
+      unloaded.length ? `Registered scripts absent from index.html: ${unloaded.join(', ')}` : '',
+    ].filter(Boolean).join('\n');
+    if (fatal) throw new Error(msg);
+    console.log(`❌ ${msg}`);
+    return false;
+  }
+
+  const moduleSyntaxFiles = productionPaths.filter((path) => (
+    /^\s*(?:import|export)\b/m.test(readFileSync(path, 'utf8'))
+  ));
+  if (moduleSyntaxFiles.length) {
+    const msg = `Classic scripts contain ES-module syntax:\n${
+      moduleSyntaxFiles.map((path) => `  ${relative(root, path).replace(/\\/g, '/')}`).join('\n')
+    }`;
+    if (fatal) throw new Error(msg);
+    console.log(`❌ ${msg}`);
+    return false;
+  }
+
+  console.log(`✅  Browser script inventory and order match index.html (${indexScripts.length} scripts).`);
+
   const graph = buildGraph(productionPaths, root);
+  const edgeCount = [...graph.values()].reduce((total, edges) => total + edges.size, 0);
+
+  if (edgeCount === 0) {
+    console.log('ℹ️  Explicit dependency-graph checks are deferred until the native-ESM migration.');
+    console.log(`\nArchitecture checks passed (${productionPaths.length} classic runtime scripts).`);
+    return true;
+  }
 
   // 1. Cycles
   const cycles = findCycles(graph);
@@ -466,7 +528,7 @@ export function checkArchitecture(root, { fatal = false } = {}) {
   }
   console.log('✅  All production modules reachable from entrypoints.');
 
-  console.log(`\nArchitecture checks passed (${productionPaths.length} modules).`);
+  console.log(`\nArchitecture checks passed (${productionPaths.length} modules, ${edgeCount} explicit dependency edges).`);
   return true;
 }
 

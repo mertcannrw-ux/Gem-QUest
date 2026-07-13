@@ -26,6 +26,9 @@ secrets.json
 # Build outputs (none currently, but safe)
 dist/
 build/
+coverage/
+playwright-report/
+test-results/
 
 # Local-only scripts
 ../gen_assets.js

@@ -13,6 +13,40 @@ class CombatCoordinator {
   constructor(game) {
     this.game = game;
     this.pendingLevelUps = 0;
+    this._deathQueue = [];
+    this._pendingDeaths = new Set();
+    this._activeDeath = null;
+  }
+
+  /**
+   * Resolve enemy deaths iteratively. Kill effects can damage nearby enemies,
+   * which used to recurse through Enemy.die() once per chained explosion.
+   * Dense packs could therefore exhaust the JavaScript call stack. Queueing
+   * preserves the same immediate gameplay outcome without unbounded recursion.
+   */
+  resolveEnemyDeath(enemy, killer) {
+    if (!enemy?.alive || this._pendingDeaths.has(enemy)) return;
+    this._pendingDeaths.add(enemy);
+    this._deathQueue.push({ enemy, killer });
+    if (this._activeDeath) return;
+
+    try {
+      for (let cursor = 0; cursor < this._deathQueue.length; cursor++) {
+        const pending = this._deathQueue[cursor];
+        this._pendingDeaths.delete(pending.enemy);
+        if (!pending.enemy.alive) continue;
+        this._activeDeath = pending.enemy;
+        pending.enemy.die(pending.killer, this.game);
+      }
+    } finally {
+      this._activeDeath = null;
+      this._deathQueue.length = 0;
+      this._pendingDeaths.clear();
+    }
+  }
+
+  isFinalizingDeath(enemy) {
+    return this._activeDeath === enemy;
   }
 
   onPlayerLevelUp(levelsGained = 1) {

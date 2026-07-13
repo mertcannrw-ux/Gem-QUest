@@ -20,19 +20,25 @@ class GameLoop {
   }
 
   start() {
+    if (this.running) return;
     this.running = true;
+    this.lastTime = 0;
     requestAnimationFrame(this.frame);
   }
 
   stop() {
     this.running = false;
+    this.lastTime = 0;
   }
 
   frame(now) {
+    if (!this.running) return;
     if (!this.lastTime) this.lastTime = now;
     let dt = (now - this.lastTime) / 1000;
     this.lastTime = now;
-    // Clamp dt to avoid huge jumps after tab switches
+    // Clamp dt to avoid huge jumps after tab switches and reject malformed
+    // timestamps rather than propagating NaN through every simulation value.
+    if (!Number.isFinite(dt) || dt < 0) dt = 0;
     if (dt > 0.1) dt = 0.1;
 
     try {
@@ -40,12 +46,30 @@ class GameLoop {
       this.render();
     } catch (e) {
       this.running = false;
-      this.onFatal(e);
-      this.endFrame();
+      try {
+        this.onFatal(e);
+      } catch (fatalHandlerError) {
+        console.error('Fatal error handler failed:', fatalHandlerError);
+      }
+      try {
+        this.endFrame();
+      } catch (endFrameError) {
+        console.error('Input frame cleanup failed:', endFrameError);
+      }
       return;
     }
 
-    this.endFrame();
+    try {
+      this.endFrame();
+    } catch (e) {
+      this.running = false;
+      try {
+        this.onFatal(e);
+      } catch (fatalHandlerError) {
+        console.error('Fatal error handler failed:', fatalHandlerError);
+      }
+      return;
+    }
     if (this.running) requestAnimationFrame(this.frame);
   }
 }

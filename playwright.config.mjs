@@ -1,6 +1,6 @@
 /**
  * Playwright configuration for Gem Quest E2E tests.
- * Tests run against the production build served by the local Node server.
+ * Tests run against the source tree served by the local preview server.
  */
 import { defineConfig, devices } from '@playwright/test';
 

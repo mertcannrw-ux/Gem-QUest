@@ -7,15 +7,16 @@
   RunDirector.prototype.spawnStormCrystal = function () {
     const p = this.game.player;
     if (!p) return null;
-    const angle = Math.random() * Math.PI * 2;
-    const distance = 105 + Math.random() * 255;
+    const random = runtimeRandom(this.game);
+    const angle = random.range(0, Math.PI * 2);
+    const distance = random.range(105, 360);
     const crystal = {
       x: p.x + Math.cos(angle) * distance,
       y: p.y + Math.sin(angle) * distance,
       radius: 24,
       life: 6.5,
       maxLife: 6.5,
-      phase: Math.random() * Math.PI * 2
+      phase: random.range(0, Math.PI * 2)
     };
     this.eventCrystals.push(crystal);
     this.game.particles.spawnRing(crystal.x, crystal.y, '#67e8f9', 42);
@@ -51,7 +52,7 @@
       enemy.takeDamage(damage, p, g);
       this.riftBolts.push({
         x1: x, y1: y, x2: enemy.x, y2: enemy.y,
-        life: 0.3, maxLife: 0.3, width: 20, seed: Math.random() * 1000,
+        life: 0.3, maxLife: 0.3, width: 20, seed: runtimeRandom(g, 'visual').range(0, 1000),
         color: '#67e8f9', core: '#ffffff'
       });
       x = enemy.x;
