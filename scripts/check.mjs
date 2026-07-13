@@ -39,7 +39,10 @@ for (const file of [...jsFiles, join(root, 'serve.js')]) {
 
 const indexPath = join(root, 'index.html');
 const index = readFileSync(indexPath, 'utf8');
-const cssFiles = walkFiles(root, '.css').filter((file) => !relative(root, file).startsWith('dist'));
+const cssFiles = walkFiles(root, '.css').filter((file) => {
+  const rel = relative(root, file);
+  return !rel.startsWith('dist') && !rel.startsWith('node_modules');
+});
 
 function cleanReference(value) {
   return String(value).trim().replace(/^['"]|['"]$/g, '').split(/[?#]/, 1)[0];
@@ -211,7 +214,7 @@ for (const name of readdirSync(join(root, 'assets'))) {
 const assetFiles = [];
 function walk(dir) {
   for (const name of readdirSync(dir)) {
-    if (name === '.git' || name === 'node_modules' || name === 'dist' || name === 'artifacts') continue;
+    if (name === '.git' || name === 'node_modules' || name === 'dist' || name === 'artifacts' || name === 'test-results') continue;
     const target = join(dir, name);
     const stats = statSync(target);
     if (stats.isDirectory()) walk(target);
