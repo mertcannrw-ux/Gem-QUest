@@ -1,0 +1,11 @@
+/* Keyboard and assistive-technology affordances layered after the visual theme. */
+#game-canvas:focus-visible {
+  outline: 3px solid #7af0ff;
+  outline-offset: -3px;
+}
+
+@media (forced-colors: active) {
+  #game-canvas:focus-visible {
+    outline: 3px solid CanvasText;
+  }
+}
