@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="description" content="Gem Quest - a fast-paced arena survival roguelite. Defeat waves of enemies, collect loot, and conquer 4 themed stages." />
   <meta name="theme-color" content="#0a0a1a" />
   <title>Gem Quest - Arena Survival</title>
@@ -30,8 +30,8 @@
 
   <!-- The game container. Sized to a 16:9 letterbox inside the viewport. -->
   <div id="game-container">
-    <canvas id="game-canvas" tabindex="0"></canvas>
-    <div id="touch-controls" class="hidden">
+    <canvas id="game-canvas" tabindex="0" role="application" aria-label="Gem Quest game canvas. Use WASD or ZQSD to move, Space to dash, E for Nova, number keys to choose rewards, and arrow keys plus Enter to navigate menus."></canvas>
+    <div id="touch-controls" class="hidden" aria-hidden="true">
       <div id="touch-joystick"><div id="touch-stick"></div></div>
     </div>
   </div>
@@ -55,6 +55,7 @@
   <script defer src="js/stages.js"></script>
   <script defer src="js/ui.js"></script>
   <script defer src="js/game.js"></script>
+  <script defer src="js/release-fixes.js"></script>
   <script defer src="js/main.js"></script>
 </body>
 </html>
