@@ -14,16 +14,7 @@
   const fatalRetry = document.getElementById('fatal-retry');
 
   function setBoot(t) { if (bootText) bootText.textContent = t; }
-  function computeMaxCoins() {
-    let total = 0;
-    for (const upgrade of SHOP_UPGRADES) {
-      for (let level = 0; level < upgrade.max; level++) {
-        total += Math.floor(upgrade.cost * (1 + level * 0.5));
-      }
-    }
-    return Math.max(1000, Math.floor(total * 1.5));
-  }
-  const MAX_TOTAL_COINS = computeMaxCoins();
+  const MAX_TOTAL_COINS = Number.MAX_SAFE_INTEGER;
   function showFatal(message = 'An unexpected error stopped the game safely.') {
     if (fatalMessage) fatalMessage.textContent = message;
     fatalScreen?.classList.remove('hidden');
@@ -113,6 +104,7 @@
     bootScreen.classList.add('hidden');
     SDK.loadingStop();
     setTimeout(() => { bootScreen.style.display = 'none'; }, 500);
+    canvas?.focus();
     // Also try to resume the audio context on the first user
     // gesture, since the policy requires a click before audio plays.
     if (typeof Audio !== 'undefined' && Audio.resume) Audio.resume();
