@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, extname, join, relative, resolve } from 'node:path';
 
 import { checkArchitecture, ENTRYPOINTS, ALL_PRODUCTION_MODULES } from './architecture.mjs';
@@ -214,7 +214,10 @@ const referenceSource = [
   ...cssFiles.map((file) => readFileSync(file, 'utf8')),
   ...jsFiles.map((file) => readFileSync(file, 'utf8'))
 ].join('\n');
-for (const name of readdirSync(join(root, 'assets'))) {
+const assetsDir = join(root, 'assets');
+// assets/ is empty until real art lands and is therefore absent from a fresh
+// checkout (git does not track empty directories); verify usage only when it exists.
+for (const name of existsSync(assetsDir) ? readdirSync(assetsDir) : []) {
   const assetPath = `assets/${name}`;
   if (!referenceSource.includes(assetPath)) throw new Error(`Unused asset: ${assetPath}`);
 }
