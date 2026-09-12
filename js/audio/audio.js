@@ -35,6 +35,9 @@
  * @property {(opts?: *) => void} select
  * @property {(opts?: *) => void} deny
  * @property {(opts?: *) => void} bossSpawn
+ * @property {(opts?: *) => void} bossVoice
+ * @property {(opts?: *) => void} bossPhase
+ * @property {(opts?: *) => void} bossImpact
  * @property {(eventId?: string) => void} worldEvent
  * @property {(opts?: *) => void} eventImpact
  * @property {(opts?: *) => void} riftTeleport
@@ -84,7 +87,14 @@ function sync(game) {
     musicFilter.frequency.setTargetAtTime(targetCutoff, ctx.currentTime, 0.8);
     const subdued = game.state === GAME_STATE.PAUSED || game.state === GAME_STATE.LEVEL_UP ||
       game.state === GAME_STATE.STAGE_COMPLETE || game.state === GAME_STATE.GAME_OVER;
-    musicMaster.gain.setTargetAtTime(subdued ? musicVolume * 0.62 : musicVolume, ctx.currentTime, 0.5);
+    // Respect active duck deadline; only reassert music volume once duck expires.
+    if (ctx.currentTime < duckState.deadline) {
+      const lowered = musicVolume * (1 - clamp(duckState.amount, 0, 0.7));
+      musicMaster.gain.cancelScheduledValues(ctx.currentTime);
+      musicMaster.gain.setTargetAtTime(lowered, ctx.currentTime, 0.012);
+    } else {
+      musicMaster.gain.setTargetAtTime(subdued ? musicVolume * 0.62 : musicVolume, ctx.currentTime, 0.5);
+    }
     if (changed) {
       step = 0;
       nextStepTime = Math.max(nextStepTime, ctx.currentTime + 0.06);
@@ -102,7 +112,8 @@ const Audio = {
   setCriticalCueBoost, getCriticalCueBoost,
   setMusicCandidate, getMusicCandidate, getMusicCandidates,
   hit, kill, shoot, shootBig, levelUp, coin, coinLot,
-  explosion, hurt, select, deny, bossSpawn, worldEvent, eventImpact, riftTeleport,
+  explosion, hurt, select, deny, bossSpawn, bossVoice, bossPhase, bossImpact,
+  worldEvent, eventImpact, riftTeleport,
   eventCollect, eventAttune, eventComplete,
   lootboxOpen, victory,
   play, impact, enemyDeath, weaponFire, enemyAttack, danger, pickup, dash, reward

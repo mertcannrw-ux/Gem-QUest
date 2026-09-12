@@ -196,3 +196,274 @@ test('MetaProgress.save persists a clamped, versioned envelope', async () => {
   assert.equal(saved.shopLevels.hp, 10);
   assert.equal(saved.shopLevels.speed, 6);
 });
+
+// ===== SDK init timeout + lifecycle replay =====
+
+test('SDK.init with hanging portal times out and falls back to local', async () => {
+  const local = new Map();
+  const additions = {
+    window: {
+      __GemQuestTestConfig: { initTimeoutMs: 50 },
+      CrazyGames: {
+        SDK: {
+          // A promise that never resolves simulates a hanging portal SDK.
+          init: () => new Promise(() => {}),
+        }
+      }
+    },
+    localStorage: {
+      getItem: (key) => local.get(key) ?? null,
+      setItem: (key, value) => local.set(key, value)
+    }
+  };
+  const ctx = loadScripts(['js/sdk.js'], additions);
+  const adapter = run(ctx, 'SDK');
+  const ok = await adapter.init();
+  assert.equal(ok, false);
+  assert.equal(adapter.isAvailable(), false);
+});
+
+test('SDK replays gameplayStart after late init success when gameplay is active', async () => {
+  let resolveInit = null;
+  const deferredInit = new Promise((r) => { resolveInit = r; });
+  let gameplayStartCalls = 0;
+
+  const additions = {
+    window: {
+      __GemQuestTestConfig: { initTimeoutMs: 50 },
+      CrazyGames: {
+        SDK: {
+          init: () => deferredInit,
+          game: {
+            gameplayStart() { gameplayStartCalls++; },
+            gameplayStop() {}
+          }
+        }
+      }
+    },
+    localStorage: {
+      getItem: () => null,
+      setItem: (k, v) => {}
+    }
+  };
+  const ctx = loadScripts(['js/sdk.js'], additions);
+  const adapter = run(ctx, 'SDK');
+
+  // Init should time out (the deferred promise is still pending).
+  const ok = await adapter.init();
+  assert.equal(ok, false);
+  assert.equal(adapter.isAvailable(), false);
+
+  // Mark gameplay as active before the SDK becomes available.
+  adapter.gameplayStart();
+  assert.equal(adapter.isAvailable(), false);
+
+  // The hanging init now resolves — the late handler should activate the SDK
+  // and replay gameplayStart on the game object.
+  resolveInit();
+  await new Promise((r) => setTimeout(r, 10));
+
+  assert.equal(adapter.isAvailable(), true);
+  assert.equal(gameplayStartCalls, 1);
+});
+
+// ===== Dual-store failure =====
+
+test('SDK.save returns false when both local and cloud storage fail', async () => {
+  const additions = {
+    window: {
+      __GemQuestTestConfig: { initTimeoutMs: 50 },
+      CrazyGames: {
+        SDK: {
+          async init() {},
+          data: {
+            getItem() { return null; },
+            setItem() { throw new Error('cloud unavailable'); }
+          }
+        }
+      }
+    },
+    localStorage: {
+      getItem: () => null,
+      setItem: () => { throw new Error('local storage full'); }
+    }
+  };
+  const ctx = loadScripts(['js/sdk.js'], additions);
+  const adapter = run(ctx, 'SDK');
+  await adapter.init();
+  const result = await adapter.save('testKey', { foo: 1 });
+  assert.equal(result, false);
+});
+
+// ===== High legitimate coins =====
+
+test('SaveSchema.sanitizeSave clamps coins above the computed economy ceiling', () => {
+  const { ctx } = buildGameContext();
+  const result = run(ctx, `(function () {
+    return SaveSchema.sanitizeSave({ totalCoins: 999999, maxStageReached: 2, shopLevels: {} });
+  })()`);
+  const ceiling = run(ctx, `(function () { return SaveSchema.computeMaxCoins(); })()`);
+  assert.equal(result.version, 1);
+  // Values above the computed ceiling (sum of all shop upgrades x 1.5) are clamped.
+  assert.equal(result.totalCoins, ceiling);
+  assert.equal(result.maxStageReached, 2);
+});
+
+test('SaveSchema.sanitizeSave preserves legitimate coin values within ceiling', () => {
+  const { ctx } = buildGameContext();
+  const ceiling = run(ctx, `(function () { return SaveSchema.computeMaxCoins(); })()`);
+  const legitimate = Math.floor(ceiling * 0.5);
+  const result = run(ctx, `(function () {
+    return SaveSchema.sanitizeSave({ totalCoins: ${legitimate}, maxStageReached: 1, shopLevels: {} });
+  })()`);
+  assert.equal(result.version, 1);
+  assert.equal(result.totalCoins, legitimate);
+  assert.equal(result.maxStageReached, 1);
+});
+
+// ===== Deferred A/B race + late lifecycle replay =====
+
+test('SDK overlapping init attempts: late activation survives a sibling timeout', async () => {
+  let resolveInit = null;
+  const deferredInit = new Promise((r) => { resolveInit = r; });
+  let gameplayStartCalls = 0;
+  let loadingStartCalls = 0;
+
+  const additions = {
+    window: {
+      __GemQuestTestConfig: { initTimeoutMs: 50 },
+      CrazyGames: {
+        SDK: {
+          init: () => deferredInit,
+          game: {
+            gameplayStart() { gameplayStartCalls++; },
+            gameplayStop() {},
+            loadingStart() { loadingStartCalls++; },
+            loadingStop() {}
+          }
+        }
+      }
+    },
+    localStorage: {
+      getItem: () => null,
+      setItem: (k, v) => {}
+    }
+  };
+  const ctx = loadScripts(['js/sdk.js'], additions);
+  const adapter = run(ctx, 'SDK');
+
+  // First init — times out because deferredInit is still pending.
+  const ok1 = await adapter.init();
+  assert.equal(ok1, false);
+  assert.equal(adapter.isAvailable(), false);
+
+  // Call gameplayStart and loadingStart before the portal SDK activates so
+  // the late handler must replay them.
+  adapter.gameplayStart();
+  adapter.loadingStart();
+
+  // Second init call — should see the same pendingInit and also time out,
+  // but MUST NOT clear the SDK when the late handler fires.
+  const ok2 = await adapter.init();
+  assert.equal(ok2, false);
+  assert.equal(adapter.isAvailable(), false);
+
+  // The deferred portal init now resolves, triggering late handlers from
+  // both the first and second init call.
+  resolveInit();
+  await new Promise((r) => setTimeout(r, 10));
+
+  assert.equal(adapter.isAvailable(), true);
+  // gameplayStart must be replayed exactly once (the flag was set before any
+  // late handler, and both handlers check !sdk — the first sets it).
+  assert.equal(gameplayStartCalls, 1);
+  // loadingStart must be replayed exactly once for the same reason.
+  assert.equal(loadingStartCalls, 1);
+
+  // A third init call immediately returns true because initialized is set.
+  assert.equal(await adapter.init(), true);
+});
+
+test('SDK replays loadingStart after late activation and clears on loadingStop', async () => {
+  let resolveInit = null;
+  const deferredInit = new Promise((r) => { resolveInit = r; });
+  let loadingStartCalls = 0;
+
+  const additions = {
+    window: {
+      __GemQuestTestConfig: { initTimeoutMs: 50 },
+      CrazyGames: {
+        SDK: {
+          init: () => deferredInit,
+          game: {
+            loadingStart() { loadingStartCalls++; },
+            loadingStop() {}
+          }
+        }
+      }
+    },
+    localStorage: {
+      getItem: () => null,
+      setItem: (k, v) => {}
+    }
+  };
+  const ctx = loadScripts(['js/sdk.js'], additions);
+  const adapter = run(ctx, 'SDK');
+
+  // loadingStart is called before the SDK is activated; the flag is set but
+  // the portal call is deferred.
+  adapter.loadingStart();
+  assert.equal(loadingStartCalls, 0);
+
+  // Init times out.
+  await adapter.init();
+  assert.equal(adapter.isAvailable(), false);
+
+  // loadingStop clears the replay requirement before the portal resolves.
+  adapter.loadingStop();
+  assert.equal(loadingStartCalls, 0);
+
+  // Portal finally resolves — the late handler should NOT replay loadingStart
+  // because loadingStop cleared the flag.
+  resolveInit();
+  await new Promise((r) => setTimeout(r, 10));
+
+  assert.equal(adapter.isAvailable(), true);
+  assert.equal(loadingStartCalls, 0);
+});
+
+test('SDK does not replay loadingStart when late activation succeeds with no loadingRequested', async () => {
+  let resolveInit = null;
+  const deferredInit = new Promise((r) => { resolveInit = r; });
+  let loadingStartCalls = 0;
+
+  const additions = {
+    window: {
+      __GemQuestTestConfig: { initTimeoutMs: 50 },
+      CrazyGames: {
+        SDK: {
+          init: () => deferredInit,
+          game: {
+            loadingStart() { loadingStartCalls++; },
+            loadingStop() {}
+          }
+        }
+      }
+    },
+    localStorage: {
+      getItem: () => null,
+      setItem: (k, v) => {}
+    }
+  };
+  const ctx = loadScripts(['js/sdk.js'], additions);
+  const adapter = run(ctx, 'SDK');
+
+  // No loadingStart call before activation.
+  await adapter.init();
+
+  resolveInit();
+  await new Promise((r) => setTimeout(r, 10));
+
+  assert.equal(adapter.isAvailable(), true);
+  assert.equal(loadingStartCalls, 0);
+});

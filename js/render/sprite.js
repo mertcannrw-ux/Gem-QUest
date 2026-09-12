@@ -57,8 +57,37 @@
 
 const cache = new Map();
 
-  function get(id) { return cache.get(id); }
+// Cache for tinted sprite masks keyed by source canvas then by tint color.
+// Finite catalog colors bound size; re-registration creates fresh canvas refs
+// naturally partitioning generations.
+const tintCache = new Map();
 
+function getTintedMask(img, color, w, h) {
+  let byColor = tintCache.get(img);
+  if (!byColor) {
+    byColor = new Map();
+    tintCache.set(img, byColor);
+  }
+  let tc = byColor.get(color);
+  if (!tc) {
+    const c = makeCanvas(w, h);
+    c.ctx.drawImage(img, 0, 0);
+    c.ctx.globalCompositeOperation = 'source-in';
+    c.ctx.fillStyle = color;
+    c.ctx.fillRect(0, 0, w, h);
+    tc = c.canvas;
+    byColor.set(color, tc);
+  }
+  return tc;
+}
+
+  function tinted(id, color) {
+    const s = cache.get(id);
+    if (!s || !s.image) return null;
+    return getTintedMask(s.image, color, s.w, s.h);
+  }
+
+  function get(id) { return cache.get(id); }
   function has(id) { return cache.has(id); }
 
   function makeCanvas(w, h) {
@@ -140,7 +169,7 @@ const cache = new Map();
     if (!img) return;
 
     const w = s.w, h = s.h;
-    // If a flip is needed we have to use save/scale
+    // Draw the base sprite (flipped if requested)
     if (opts.flipX) {
       ctx.save();
       ctx.translate(x + w / 2, y - h / 2);
@@ -151,12 +180,19 @@ const cache = new Map();
       ctx.drawImage(img, x - w / 2, y - h / 2);
     }
 
+    // Tint overlay via alpha-masked cache. The cached tint mask is drawn
+    // under the same flipX transform so the tint silhouette matches the base.
     if (opts.tint) {
-      ctx.save();
-      ctx.globalCompositeOperation = 'source-atop';
-      ctx.fillStyle = opts.tint;
-      ctx.fillRect(x - w / 2, y - h / 2, w, h);
-      ctx.restore();
+      const tc = getTintedMask(img, opts.tint, w, h);
+      if (opts.flipX) {
+        ctx.save();
+        ctx.translate(x + w / 2, y - h / 2);
+        ctx.scale(-1, 1);
+        ctx.drawImage(tc, 0, 0);
+        ctx.restore();
+      } else {
+        ctx.drawImage(tc, x - w / 2, y - h / 2);
+      }
     }
     if (opts.glow) {
       ctx.save();
@@ -209,6 +245,7 @@ const Sprite = {
   has,
   draw,
   drawRotated,
+  tinted,
   register: reg,
   PAL
 };

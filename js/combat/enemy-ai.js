@@ -37,6 +37,7 @@
       game.particles.spawnRing(this.x, this.y, '#f5d0fe', 68);
       game.particles.spawnSparkBurst(oldX, oldY, this.elite.color, 14);
       game.particles.spawnSparkBurst(this.x, this.y, '#f5d0fe', 16);
+      game.resolveEnvironmentCollision?.(this, this.size * 0.45);
       return true;
     } else if (this.elite.id === 'stormcaller') {
       this.mutationTimer = random.range(4.2, 5.3);

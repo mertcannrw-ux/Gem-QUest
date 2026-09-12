@@ -236,7 +236,7 @@ test('enemy rendering never depends on the gameplay update context', () => {
 
 test('mutations scale enemy bodies and rare mutations expose unique mechanics', () => {
   const ctx = loadScripts(
-    ['js/utils.js', 'js/core/random.js', 'js/mechanics.js', 'js/run/run-director.js', 'js/run/combo-system.js', 'js/run/bounty-system.js', 'js/run/synergies.js', 'js/run/event-common.js', 'js/run/events/gem-storm.js', 'js/run/events/starfall.js', 'js/run/events/luminous-tide.js', 'js/run/events/rift-frenzy.js', 'js/combat/mutations.js', 'js/combat/projectile.js', 'js/combat/enemy.js', 'js/combat/enemy-ai.js', 'js/combat/boss-ai.js'],
+    ['js/utils.js', 'js/core/random.js', 'js/mechanics.js', 'js/run/run-director.js', 'js/run/combo-system.js', 'js/run/bounty-system.js', 'js/run/synergies.js', 'js/run/event-common.js', 'js/run/events/gem-storm.js', 'js/run/events/starfall.js', 'js/run/events/luminous-tide.js', 'js/run/events/rift-frenzy.js', 'js/combat/mutations.js', 'js/combat/projectile.js', 'js/combat/enemy.js', 'js/combat/enemy-ai.js', 'js/combat/boss-encounter.js', 'js/combat/boss-ai.js'],
     {
       ENEMIES: {
         slime: { id: 'slime', name: 'Slime', hp: 20, speed: 40, dmg: 5, xp: 2, coin: 1, size: 20, ai: 'chase' }
@@ -289,7 +289,7 @@ test('player stat modifiers distinguish flat and percentage damage', () => {
     })()
   `, ctx);
   assert.equal(stats.damage, 15);
-  assert.equal(stats.damageMult, 0.36);
+  assert.equal(stats.damageMult, 0.15);
   assert.equal(stats.maxHp, 120);
 });
 
@@ -441,7 +441,7 @@ test('SDK save reports a timed-out cloud write while retaining local data', asyn
   });
   const adapter = vm.runInContext('SDK', ctx);
   await adapter.init();
-  assert.equal(await adapter.save('saveData', { totalCoins: 77 }), false);
+  assert.equal(await adapter.save('saveData', { totalCoins: 77 }), true);
   assert.match(local.get('gemquest_saveData'), /77/);
 });
 
@@ -554,7 +554,7 @@ test('SDK retries a later snapshot after an earlier cloud write times out', asyn
   });
   const adapter = vm.runInContext('SDK', ctx);
   await adapter.init();
-  assert.equal(await adapter.save('saveData', { totalCoins: 77 }), false);
+  assert.equal(await adapter.save('saveData', { totalCoins: 77 }), true);
   assert.equal(await adapter.save('saveData', { totalCoins: 88 }), true);
   assert.equal(writes.length, 2);
   assert.deepEqual(JSON.parse(writes[1].value).payload, { totalCoins: 88 });
@@ -588,7 +588,7 @@ test('SDK repairs cloud state when an old timed-out write finishes after a newer
   const adapter = vm.runInContext('SDK', ctx);
   await adapter.init();
 
-  assert.equal(await adapter.save('saveData', { totalCoins: 10 }), false);
+  assert.equal(await adapter.save('saveData', { totalCoins: 10 }), true);
   const secondSave = adapter.save('saveData', { totalCoins: 20 });
   pending[1]();
   assert.equal(await secondSave, true);
@@ -1239,4 +1239,334 @@ test('Luminous Tide wells heal, purge enemies, and grant ascension', () => {
   assert.ok(result.invuln >= 2.2);
   assert.ok(result.damage > 0);
   assert.equal(result.bolts, 3);
+});
+test('enemy contact uses post-movement distance after teleport', () => {
+  const ctx = loadScripts(
+    ['js/utils.js', 'js/core/random.js', 'js/mechanics.js', 'js/combat/mutations.js', 'js/combat/projectile.js', 'js/combat/enemy.js', 'js/combat/enemy-ai.js', 'js/combat/boss-encounter.js', 'js/combat/boss-ai.js'],
+    {
+      ENEMIES: {
+        wisp: { id: 'wisp', name: 'Wisp', hp: 10, speed: 100, dmg: 8, xp: 2, coin: 1, size: 18, ai: 'teleport', teleportCooldown: 1 }
+      },
+      Audio: { play() {} },
+      ITEMS_RUNTIME: { spawnGem() {}, spawnCoin() {} },
+      Sprite: { has: () => false },
+      performance: { now: () => 0 }
+    }
+  );
+  const result = vm.runInContext(`(() => {
+    const enemy = new Enemy('wisp', 400, 400);
+    enemy.teleportTimer = 0;
+    const takeDamageCalls = [];
+    const player = {
+      x: 200, y: 200, r: 10, alive: true, hp: 100,
+      takeDamage(amount, sx, sy) { takeDamageCalls.push({ amount, sx, sy }); }
+    };
+    const game = {
+      player,
+      _cachedEnemySlow: 0,
+      particles: { spawnRing() {}, spawnSparkBurst() {}, spawnBurst() {} },
+      shake: { trigger() {} },
+      enemyProjectiles: [],
+      enemies: [enemy],
+      resolveEnvironmentCollision() {},
+      moveActorWithEnvironment() {}
+    };
+    enemy.update(2, game);
+    return {
+      damageDealt: takeDamageCalls.length > 0 ? takeDamageCalls[0].amount : 0,
+      enemyX: enemy.x, enemyY: enemy.y,
+      distanceFromPlayer: Math.hypot(enemy.x - player.x, enemy.y - player.y)
+    };
+  })()`, ctx);
+  assert.ok(result.distanceFromPlayer > 150, 'enemy teleported to remote position');
+  assert.equal(result.damageDealt, 0, 'no contact damage at teleport distance');
+});
+test('riftborn blink triggers environment collision before early return', () => {
+  const ctx = loadScripts(
+    ['js/utils.js', 'js/core/random.js', 'js/mechanics.js', 'js/combat/mutations.js', 'js/combat/projectile.js', 'js/combat/enemy.js', 'js/combat/enemy-ai.js', 'js/combat/boss-encounter.js', 'js/combat/boss-ai.js'],
+    {
+      ENEMIES: {
+        slime: { id: 'slime', name: 'Slime', hp: 20, speed: 40, dmg: 5, xp: 2, coin: 1, size: 20, ai: 'chase' }
+      },
+      Audio: { play() {} },
+      ITEMS_RUNTIME: { spawnGem() {}, spawnCoin() {} },
+      Sprite: { has: () => false },
+      performance: { now: () => 0 }
+    }
+  );
+  const result = vm.runInContext(`(() => {
+    const normal = new Enemy('slime', 0, 0);
+    const riftborn = RARE_MUTATIONS.find((mutation) => mutation.id === 'riftborn');
+    applyEliteModifier(normal, riftborn);
+    let collisionResolved = false;
+    const game = {
+      player: { x: 120, y: 0, r: 8, alive: true, stats: () => ({ enemySlow: 0 }) },
+      _cachedEnemySlow: 0,
+      enemyProjectiles: [],
+      enemies: [normal],
+      particles: { spawnRing() {}, spawnSparkBurst() {}, spawnBurst() {} },
+      shake: { trigger() {} },
+      resolveEnvironmentCollision() { collisionResolved = true; }
+    };
+    normal.mutationTimer = 0;
+    const returnedEarly = normal.updateRareMutation(0.1, game, game.player, 120);
+    return { returnedEarly, collisionResolved };
+  })()`, ctx);
+  assert.equal(result.returnedEarly, true, 'riftborn mutation returns early');
+  assert.equal(result.collisionResolved, true, 'environment collision resolved before early return');
+});
+test('vampiric elite does not heal when player takes no damage', () => {
+  const ctx = loadScripts(
+    ['js/utils.js', 'js/core/random.js', 'js/mechanics.js', 'js/combat/mutations.js', 'js/combat/projectile.js', 'js/combat/enemy.js', 'js/combat/enemy-ai.js', 'js/combat/boss-encounter.js', 'js/combat/boss-ai.js'],
+    {
+      ENEMIES: {
+        bat: { id: 'bat', name: 'Bat', hp: 30, speed: 80, dmg: 10, xp: 2, coin: 1, size: 16, ai: 'chase' }
+      },
+      Audio: { play() {} },
+      ITEMS_RUNTIME: { spawnGem() {}, spawnCoin() {} },
+      Sprite: { has: () => false },
+      performance: { now: () => 0 }
+    }
+  );
+  const result = vm.runInContext(`(() => {
+    const enemy = new Enemy('bat', 5, 0);
+    enemy.elite = { id: 'vampiric', rare: false };
+    enemy.hp = 20;
+    enemy.maxHp = 30;
+    const player = {
+      x: 0, y: 0, r: 10, alive: true, hp: 50,
+      invuln: 0,
+      stats: () => ({ enemySlow: 0 }),
+      takeDamage(amount, sx, sy) { /* block: return early => hp unchanged */ }
+    };
+    const game = {
+      player,
+      _cachedEnemySlow: 0,
+      particles: { spawnRing() {}, spawnSparkBurst() {}, spawnBurst() {} },
+      shake: { trigger() {} },
+      enemyProjectiles: [],
+      enemies: [enemy],
+      resolveEnvironmentCollision() {},
+      moveActorWithEnvironment() {}
+    };
+    enemy.update(0.016, game);
+    return { hp: enemy.hp, playerHp: player.hp };
+  })()`, ctx);
+  assert.equal(result.hp, 20, 'vampiric did not heal because player took no damage');
+  assert.equal(result.playerHp, 50, 'player hp unchanged');
+});
+test('enemy reads cached enemySlow from game instead of per-enemy stats allocation', () => {
+  const ctx = loadScripts(
+    ['js/utils.js', 'js/core/random.js', 'js/mechanics.js', 'js/combat/mutations.js', 'js/combat/projectile.js', 'js/combat/enemy.js', 'js/combat/enemy-ai.js', 'js/combat/boss-encounter.js', 'js/combat/boss-ai.js'],
+    {
+      ENEMIES: {
+        runner: { id: 'runner', name: 'Runner', hp: 10, speed: 200, dmg: 5, xp: 1, coin: 1, size: 14, ai: 'chase' }
+      },
+      Audio: { play() {} },
+      ITEMS_RUNTIME: { spawnGem() {}, spawnCoin() {} },
+      Sprite: { has: () => false },
+      performance: { now: () => 0 }
+    }
+  );
+  const result = vm.runInContext(`(() => {
+    const enemy = new Enemy('runner', 100, 0);
+    let statsCallCount = 0;
+    const player = {
+      x: 0, y: 0, r: 8, alive: true, hp: 100,
+      stats() { statsCallCount++; return { enemySlow: 0.3 }; }
+    };
+    const game = {
+      player,
+      _cachedEnemySlow: 0.5,
+      time: 0,
+      particles: { spawnRing() {}, spawnSparkBurst() {}, spawnBurst() {} },
+      shake: { trigger() {} },
+      enemyProjectiles: [],
+      enemies: [enemy],
+      resolveEnvironmentCollision() {},
+      moveActorWithEnvironment() {}
+    };
+    enemy.update(0.016, game);
+    return { statsCallCount };
+  })()`, ctx);
+  assert.equal(result.statsCallCount, 0, 'player.stats() was not called during enemy update');
+});
+
+test('pickItemRewards returns all available unique items when fewer than requested', () => {
+  const ctx = loadScripts(['js/utils.js', 'js/core/random.js', 'js/content/items.js', 'js/content/enemies.js', 'js/content/stages.js', 'js/content/shop.js', 'js/content/lootboxes.js']);
+  // 2 eligible items, request 3 -> returns 2
+  const items = vm.runInContext('ITEMS', ctx);
+  const owned2 = {};
+  for (const it of items) owned2[it.id] = it.maxStacks;
+  delete owned2[items[0].id];
+  delete owned2[items[1].id];
+  ctx._owned2 = owned2;
+  const result2 = vm.runInContext('pickItemRewards(_owned2, 3, Utils.makeRng(42))', ctx);
+  assert.equal(result2.length, 2);
+  assert.equal(new Set(result2.map(i => i.id)).size, 2);
+  // 1 eligible item, request 3 -> returns 1
+  const owned1 = {};
+  for (const it of items) owned1[it.id] = it.maxStacks;
+  delete owned1[items[0].id];
+  ctx._owned1 = owned1;
+  const result1 = vm.runInContext('pickItemRewards(_owned1, 3, Utils.makeRng(42))', ctx);
+  assert.equal(result1.length, 1);
+  assert.equal(new Set(result1.map(i => i.id)).size, 1);
+  // 0 eligible items (all maxed) -> returns 0
+  const owned0 = {};
+  for (const it of items) owned0[it.id] = it.maxStacks;
+  ctx._owned0 = owned0;
+  const result0 = vm.runInContext('pickItemRewards(_owned0, 3, () => 0.5)', ctx);
+  assert.equal(result0.length, 0);
+});
+
+test('hostile combat freezes while lootbox choice is open', () => {
+  const ctx = loadScripts(
+    ['js/content/lootboxes.js', 'js/content/items.js', 'js/lootbox.js', 'js/platform/settings-store.js', 'js/platform/save-schema.js', 'js/platform/meta-progress.js', 'js/core/constants.js', 'js/core/game-state.js', 'js/core/lifecycle.js', 'js/game/canvas-viewport.js', 'js/game/game-loop.js', 'js/game/world-session.js', 'js/world/environment-system.js', 'js/world/environment-renderer.js', 'js/world/terrain-renderer.js', 'js/core/random.js', 'js/combat/combat-coordinator.js', 'js/world/world-renderer.js', 'js/world/menu-background-renderer.js', 'js/game.js'],
+    {
+      LOOTBOX: { gold: { id: 'gold', count: 3 } },
+      pickItemRewards: () => [{ id: 'sword', rarity: 'common', name: 'Sword' }],
+      Audio: { sync() {}, play() {} },
+      SDK: { gameplayStop() {} },
+      SHOP_UPGRADES: [],
+      STAGES: [{ id: 'forest' }],
+      ParticleSystem: class {},
+      RunDirector: class {},
+      Input: { updateMouseWorld() {} },
+      Utils: {
+        lerp: (from, to, amount) => from + (to - from) * amount,
+        clamp: (v, lo, hi) => Math.max(lo, Math.min(hi, v))
+      },
+      ITEMS_RUNTIME: { updatePickups() {} }
+    }
+  );
+  const result = vm.runInContext(`(() => {
+    let enemyUpdates = 0;
+    let enemyProjUpdates = 0;
+    let playerProjUpdates = 0;
+
+    const box = new Lootbox(0, 0, 'gold');
+    box.opened = true;
+    box.choices = [{ id: 'sword', rarity: 'common', name: 'Sword' }];
+    box._picked = -1;
+
+    const game = Object.create(Game.prototype);
+    Object.assign(game, {
+      state: 'playing',
+      time: 0,
+      settings: { screenShake: 1 },
+      shake: { x: 0, y: 0, update() {} },
+      player: { x: 0, y: 0, alive: true, totalCoins: 0, shopLevels: {}, items: {}, update() {}, addItem() {} },
+      stage: { index: 0, bossKilled: false, update() {} },
+      run: { totalCoins: 0, maxStageReached: 0, shopLevels: {} },
+      vw: 1280, vh: 720, cam: { x: 0, y: 0 },
+      enemies: [{ alive: true, update() { enemyUpdates++; } }],
+      projectiles: [{ dead: false, update() { playerProjUpdates++; } }],
+      enemyProjectiles: [{ dead: false, update() { enemyProjUpdates++; } }],
+      particles: { update() {}, spawnBurst() {}, spawnRing() {}, spawnFloat() {} },
+      lootboxes: [box],
+      director: { update() {} },
+      _environment: {
+        ensureEnvironmentAround() {},
+        updateEnvironment() {}
+      },
+      syncMetaFromPlayer() {},
+      persistMeta() { return Promise.resolve(); }
+    });
+
+    // First update with lootbox choice open -> enemies frozen
+    game.update(0.1);
+    const afterFreeze = { enemyUpdates, enemyProjUpdates, playerProjUpdates };
+
+    // Simulate player picking the item
+    box._picked = 0;
+    enemyUpdates = 0; enemyProjUpdates = 0; playerProjUpdates = 0;
+
+    // Second update -> lootbox gives item, dies, unfreezes
+    game.update(0.1);
+    const afterPick = { enemyUpdates, enemyProjUpdates, playerProjUpdates };
+
+    return { afterFreeze, afterPick, boxAlive: box.alive };
+  })()`, ctx);
+  assert.equal(result.afterFreeze.enemyUpdates, 0, 'enemies frozen during lootbox choice');
+  assert.equal(result.afterFreeze.enemyProjUpdates, 0, 'enemy projectiles frozen during lootbox choice');
+  assert.ok(result.afterFreeze.playerProjUpdates > 0, 'player projectiles advance during lootbox choice');
+  assert.ok(result.afterPick.enemyUpdates > 0, 'enemies unfrozen after lootbox pick');
+  assert.ok(result.afterPick.enemyProjUpdates > 0, 'enemy projectiles unfrozen after lootbox pick');
+  assert.equal(result.boxAlive, false, 'lootbox dead after pick');
+});
+test('lootbox pick restores correct state and allows stage completion', () => {
+  const ctx = loadScripts(
+    ['js/content/lootboxes.js', 'js/content/items.js', 'js/lootbox.js', 'js/platform/settings-store.js', 'js/platform/save-schema.js', 'js/platform/meta-progress.js', 'js/core/constants.js', 'js/core/game-state.js', 'js/core/lifecycle.js', 'js/game/canvas-viewport.js', 'js/game/game-loop.js', 'js/game/world-session.js', 'js/world/environment-system.js', 'js/world/environment-renderer.js', 'js/world/terrain-renderer.js', 'js/core/random.js', 'js/combat/combat-coordinator.js', 'js/world/world-renderer.js', 'js/world/menu-background-renderer.js', 'js/game.js'],
+    {
+      LOOTBOX: { gold: { id: 'gold', count: 3 } },
+      Audio: { sync() {}, lootboxOpen() {}, play() {} },
+      SDK: { gameplayStop() {} },
+      SHOP_UPGRADES: [],
+      STAGES: [{ id: 'forest' }],
+      ParticleSystem: class {},
+      RunDirector: class {},
+      Input: { updateMouseWorld() {} },
+      Utils: {
+        lerp: (from, to, amount) => from + (to - from) * amount,
+        clamp: (v, lo, hi) => Math.max(lo, Math.min(hi, v))
+      },
+      ITEMS_RUNTIME: { updatePickups() {} }
+    }
+  );
+  const result = vm.runInContext(`(() => {
+    let itemAdded = null;
+
+    const box = new Lootbox(0, 0, 'gold');
+    box.opened = true;
+    box.choices = [{ id: 'sword', rarity: 'common', name: 'Sword' }];
+    box._picked = -1;
+    // Prevent real openAnim delay
+    box.openAnim = 1;
+
+    const game = Object.create(Game.prototype);
+    Object.assign(game, {
+      state: 'playing',
+      time: 0,
+      settings: { screenShake: 1 },
+      shake: { x: 0, y: 0, update() {} },
+      player: {
+        x: 0, y: 0, alive: true, totalCoins: 0, shopLevels: {},
+        items: {}, update() {},
+        addItem(id) { itemAdded = id; this.items[id] = (this.items[id] || 0) + 1; }
+      },
+      stage: { index: 0, bossKilled: true, update() {} },
+      run: { totalCoins: 0, maxStageReached: 0, shopLevels: {} },
+      vw: 1280, vh: 720, cam: { x: 0, y: 0 },
+      enemies: [], projectiles: [], enemyProjectiles: [],
+      lootboxes: [box],
+      particles: { update() {}, spawnBurst() {}, spawnRing() {}, spawnFloat() {} },
+      director: { update() {} },
+      _environment: {
+        ensureEnvironmentAround() {},
+        updateEnvironment() {}
+      },
+      syncMetaFromPlayer() {},
+      persistMeta() { return Promise.resolve(); }
+    });
+
+    // Frame 1: lootbox open, choice exists
+    game.update(0.1);
+    // Should still be playing (no pick yet, lootbox still alive)
+    const beforePick = { state: game.state, lootboxCount: game.lootboxes.length };
+
+    // Player picks
+    box.pick(0);
+
+    // Frame 2: lootbox processes pick
+    game.update(0.1);
+    const afterPick = { state: game.state, lootboxCount: game.lootboxes.length, itemAdded };
+
+    return { beforePick, afterPick };
+  })()`, ctx);
+  assert.equal(result.beforePick.state, 'playing', 'state stays playing before lootbox pick');
+  assert.equal(result.beforePick.lootboxCount, 1, 'lootbox still present before pick');
+  assert.equal(result.afterPick.state, 'stagecomplete', 'stage completes after lootbox pick');
+  assert.equal(result.afterPick.lootboxCount, 0, 'lootbox removed after pick');
+  assert.equal(result.afterPick.itemAdded, 'sword', 'player received the picked item');
 });

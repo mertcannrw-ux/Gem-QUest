@@ -55,7 +55,8 @@ function runtimeRandom(owner, channel = 'simulation') {
   const property = channel === 'visual' ? 'visualRandom' : 'simulationRandom';
   const stream = owner?.[property];
   if (!stream) return FALLBACK_RUNTIME_RANDOM;
-  if (typeof stream.range === 'function' &&
+  if (typeof stream.next === 'function' &&
+      typeof stream.range === 'function' &&
       typeof stream.int === 'function' &&
       typeof stream.chance === 'function' &&
       typeof stream.pick === 'function') {
@@ -105,5 +106,5 @@ function environmentHash(x, y, salt = 0) {
  * @param {number} [salt]
  */
 function environmentRandom(x, y, salt = 0) {
-  return environmentHash(x, y, salt) / 4294967295;
+  return environmentHash(x, y, salt) / 4294967296;
 }

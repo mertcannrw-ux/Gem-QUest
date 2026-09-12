@@ -184,6 +184,64 @@ function bossSpawn(options = {}) {
   duckMusic(0.3, 0.35);
 }
 
+function bossVoice(options = {}) {
+  if (!permit('boss.voice', { cooldown: 0.9, priority: 'critical' })) return;
+  const spatial = resolveSpatial(options);
+  const profiles = {
+    stone: [74, 111], crystal: [196, 294], flesh: [108, 162], dragon: [55, 82]
+  };
+  const notes = profiles[options.kind] || profiles.stone;
+  const now = ctx.currentTime;
+  notes.forEach((freq, i) => tone({
+    freq, slide: i ? -22 : 14, dur: 0.62 + i * 0.08,
+    type: options.kind === 'crystal' ? 'triangle' : 'sawtooth',
+    vol: 0.075, filterFreq: options.kind === 'crystal' ? 2600 : 780,
+    pan: spatial.pan, gain: spatial.gain, destination: 'boss', when: now + i * 0.055
+  }));
+  noise({
+    dur: 0.28, vol: 0.035, filterFreq: options.kind === 'dragon' ? 520 : 1100,
+    pan: spatial.pan, gain: spatial.gain, destination: 'boss'
+  });
+  duckMusic(0.26, 0.5);
+}
+
+function bossPhase(options = {}) {
+  if (!permit('boss.phase', { cooldown: 0.4, priority: 'critical' })) return;
+  const spatial = resolveSpatial(options);
+  const phase = Math.max(1, Number(options.phase) || 1);
+  const now = ctx.currentTime;
+  [0, 3, 7, 12].forEach((interval, i) => tone({
+    freq: 82 * Math.pow(2, (interval + phase * 2) / 12),
+    slide: i === 3 ? 180 : -24, dur: 0.52,
+    type: i % 2 ? 'triangle' : 'sawtooth', vol: 0.08,
+    filterFreq: 1500 + phase * 400, pan: spatial.pan,
+    gain: spatial.gain, destination: 'boss', when: now + i * 0.055
+  }));
+  noise({ dur: 0.48, vol: 0.07, filterFreq: 1450, pan: spatial.pan, gain: spatial.gain, destination: 'boss' });
+  duckMusic(0.38, 0.7);
+}
+
+function bossImpact(options = {}) {
+  const power = clamp(Number(options.power) || 1, 0.6, 2.8);
+  // Large patterns can resolve dozens of telegraphs simultaneously. This cue
+  // is important, but unlike phase/voice cues it must obey its cooldown and
+  // voice budget so a single attack cannot synthesize dozens of overlapping
+  // impact voices.
+  if (!permit('boss.impact', { cooldown: 0.1, priority: 'high' })) return;
+  const spatial = resolveSpatial(options);
+  tone({
+    freq: options.kind === 'crystal' ? 310 : 62, slide: -35,
+    dur: 0.24 + power * 0.12, type: 'sawtooth', vol: 0.075 * power,
+    filterFreq: options.kind === 'crystal' ? 2600 : 620,
+    pan: spatial.pan, gain: spatial.gain, destination: 'boss'
+  });
+  noise({
+    dur: 0.2 + power * 0.1, vol: 0.06 * power, filterFreq: 1300,
+    pan: spatial.pan, gain: spatial.gain, destination: 'boss'
+  });
+  duckMusic(0.14, 0.18);
+}
+
 function hit(options = {}) { impact(options); }
 function kill(options = {}) { enemyDeath(options); }
 function shoot(options = {}) { weaponFire(options); }
@@ -270,7 +328,10 @@ function play(event, options = {}) {
     'pickup.coin': (details) => pickup('coin', details),
     'pickup.gem': (details) => pickup('gem', details),
     'reward.reveal': reward,
-    'boss.spawn': bossSpawn
+    'boss.spawn': bossSpawn,
+    'boss.voice': bossVoice,
+    'boss.phase': bossPhase,
+    'boss.impact': bossImpact
   };
   events[event]?.(options);
 }

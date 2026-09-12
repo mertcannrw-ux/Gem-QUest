@@ -32,7 +32,7 @@ function synthAt(time, {
   gain.gain.exponentialRampToValueAtTime(0.0001, time + dur);
   osc.connect(filter).connect(gain);
   if (panner) {
-    panner.pan.value = pan;
+    panner.pan.value = mono ? 0 : pan;
     gain.connect(panner).connect(musicMaster);
   } else {
     gain.connect(musicMaster);
@@ -114,10 +114,15 @@ function outputBus(name) {
 function duckMusic(amount = 0.16, duration = 0.16) {
   if (!ctx || !musicMaster) return;
   const now = ctx.currentTime;
+  const deadline = now + duration;
+  // Persist duck state so per-frame sync() respects it.
+  if (deadline > duckState.deadline) {
+    duckState.deadline = deadline;
+    duckState.amount = amount;
+  }
   const lowered = musicVolume * (1 - clamp(amount, 0, 0.7));
   musicMaster.gain.cancelScheduledValues(now);
   musicMaster.gain.setTargetAtTime(lowered, now, 0.012);
-  musicMaster.gain.setTargetAtTime(musicVolume, now + duration, 0.12);
 }
 
 function tone({

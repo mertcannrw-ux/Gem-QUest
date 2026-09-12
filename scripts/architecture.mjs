@@ -90,6 +90,8 @@ export const MODULE_LAYER = Object.freeze(
     // ---- Layer 5: combat, run, and world simulation ----
     'js/combat/enemy.js':                    LAYER.SIMULATION,
     'js/combat/enemy-ai.js':                 LAYER.SIMULATION,
+    'js/combat/boss-encounter.js':           LAYER.SIMULATION,
+    'js/combat/boss-cinematic.js':            LAYER.SIMULATION,
     'js/combat/boss-ai.js':                  LAYER.SIMULATION,
     'js/combat/mutations.js':                LAYER.SIMULATION,
     'js/combat/projectile.js':               LAYER.SIMULATION,
@@ -210,6 +212,8 @@ export const ENTRYPOINTS = Object.freeze([
   'js/combat/projectile.js',
   'js/combat/enemy.js',
   'js/combat/enemy-ai.js',
+  'js/combat/boss-encounter.js',
+  'js/combat/boss-cinematic.js',
   'js/combat/boss-ai.js',
   'js/combat/player-combat.js',
   'js/combat/drone-system.js',

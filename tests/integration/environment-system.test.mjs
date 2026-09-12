@@ -20,6 +20,7 @@ function buildContext() {
       Object.assign(g, {
         run: { totalCoins: 0, maxStageReached: 0, shopLevels: {} },
         stage: null,
+        time: 0,
         settings: { screenShake: 1 },
         shake: { x: 0, y: 0, update() {}, trigger() {} },
         cam: { x: 0, y: 0 },
@@ -163,4 +164,39 @@ test('damaged environment state is restored on regeneration', () => {
   })()`);
   assert.equal(result.remembered, true);
   assert.equal(result.restoredHp, 40);
+});
+
+test('environmentProps collects/filters/sorts visible props once per frame tick', () => {
+  const ctx = buildContext();
+  const result = run(ctx, `(function () {
+    const stage = { id: 'forest', index: 0 };
+    const g = makeEnvGame();
+    // Generate some environment objects
+    g.environment.ensureEnvironmentAround(stage, 0, 0, 2);
+    g.time = 0;
+    // First call populates the buffer and sets _lastPropsTime
+    const firstCall = g.environment.environmentProps(stage);
+    const firstLen = firstCall.length;
+    const firstTime = g.environment._lastPropsTime;
+    // Second call within the same tick returns the same array (no re-collect)
+    const secondCall = g.environment.environmentProps(stage);
+    const secondTime = g.environment._lastPropsTime;
+    // Reference identity confirms the buffer was not re-built
+    const sameArray = firstCall === secondCall;
+    const sameTime = firstTime === secondTime;
+    // Now advance the logical frame and verify re-collection
+    g.time = 1;
+    const thirdCall = g.environment.environmentProps(stage);
+    const thirdTime = g.environment._lastPropsTime;
+    // _lastPropsTime advances to 1 proving the sort/filter ran again
+    const freshAfterTick = thirdTime > secondTime;
+    // The underlying buffer reference is always the same object
+    const stillSameBuffer = thirdCall === firstCall;
+    return { sameArray, sameTime, freshAfterTick, stillSameBuffer, count: firstLen };
+  })()`);
+  assert.equal(result.sameArray, true, 'two calls within one frame must return same array');
+  assert.equal(result.sameTime, true, '_lastPropsTime unchanged within frame');
+  assert.equal(result.freshAfterTick, true, '_lastPropsTime must advance after tick, proving re-collect');
+  assert.equal(result.stillSameBuffer, true, 'internal buffer reference is stable across frames');
+  assert.ok(result.count > 0, 'environment should contain visible props');
 });

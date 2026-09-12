@@ -156,8 +156,8 @@
 
 /**
  * Game state enum values (closed set).
- * @typedef {'boot'|'menu'|'playing'|'levelup'|'stagecomplete'|'shop'|
- *   'gameover'|'pause'|'victory'|'fatal'} GameState
+ * @typedef {'menu'|'help'|'settings'|'playing'|'bossintro'|'levelup'|'stagecomplete'|'shop'|
+ *   'gameover'|'victory'|'paused'} GameState
  */
 
 /**

@@ -34,19 +34,31 @@ const SettingsStore = (() => {
 
   function load() {
     try {
-      const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
-      return {
-        ...DEFAULTS,
-        ...saved,
-        master: Utils.clamp(Number(saved.master ?? DEFAULTS.master), 0, 1),
-        music: Utils.clamp(Number(saved.music ?? DEFAULTS.music), 0, 1),
-        lastMusic: Utils.clamp(Number(saved.lastMusic ?? saved.music ?? DEFAULTS.lastMusic), 0, 1),
-        sfx: Utils.clamp(Number(saved.sfx ?? DEFAULTS.sfx), 0, 1),
-        ambience: Utils.clamp(Number(saved.ambience ?? DEFAULTS.ambience), 0, 1),
-        screenShake: Utils.clamp(Number(saved.screenShake ?? DEFAULTS.screenShake), 0, 1),
-        particles: Utils.clamp(Number(saved.particles ?? DEFAULTS.particles), 0, 1),
-        eventIntensity: Utils.clamp(Number(saved.eventIntensity ?? DEFAULTS.eventIntensity), 0, 1)
-      };
+      const raw = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+      if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { ...DEFAULTS };
+      const out = { ...DEFAULTS };
+      for (const key of Object.keys(DEFAULTS)) {
+        const value = raw[key];
+        if (value === undefined) continue;
+        if (NUMERIC_KEYS.has(key)) {
+          const num = Number(value);
+          if (Number.isFinite(num)) {
+            out[key] = Utils.clamp(num, 0, 1);
+          }
+        } else if (typeof DEFAULTS[key] === 'boolean') {
+          if (typeof value === 'boolean') {
+            out[key] = value;
+          }
+        }
+      }
+      // lastMusic falls back to validated music when absent from storage.
+      if (raw.lastMusic === undefined && raw.music !== undefined) {
+        const musicVal = Number(raw.music);
+        if (Number.isFinite(musicVal)) {
+          out.lastMusic = Utils.clamp(musicVal, 0, 1);
+        }
+      }
+      return out;
     } catch (_) {
       return { ...DEFAULTS };
     }
@@ -54,7 +66,23 @@ const SettingsStore = (() => {
 
   function save(settings) {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+      if (!settings || typeof settings !== 'object' || Array.isArray(settings)) return;
+      const out = {};
+      for (const key of Object.keys(DEFAULTS)) {
+        const value = settings[key];
+        if (value === undefined) continue;
+        if (NUMERIC_KEYS.has(key)) {
+          const num = Number(value);
+          if (!Number.isFinite(num)) continue;
+          out[key] = Utils.clamp(num, 0, 1);
+        } else if (typeof DEFAULTS[key] === 'boolean') {
+          if (typeof value !== 'boolean') continue;
+          out[key] = value;
+        } else {
+          out[key] = value;
+        }
+      }
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(out));
     } catch (_) {
       /* storage unavailable (private mode / quota) - settings stay in memory */
     }
@@ -62,7 +90,13 @@ const SettingsStore = (() => {
 
   // Centralized clamp so callers do not duplicate the [0, 1] rule.
   function clampValue(id, value) {
-    if (NUMERIC_KEYS.has(id)) return Utils.clamp(Number(value) || 0, 0, 1);
+    if (NUMERIC_KEYS.has(id)) {
+      const num = Number(value);
+      return Number.isFinite(num) ? Utils.clamp(num, 0, 1) : DEFAULTS[id];
+    }
+    if (typeof DEFAULTS[id] === 'boolean') {
+      return typeof value === 'boolean' ? value : DEFAULTS[id];
+    }
     return value;
   }
 

@@ -34,7 +34,8 @@ class MetaProgress {
   }
 
   async save() {
-    await SDK.save('saveData', SaveSchema.sanitizeSave(this.data));
+    const ok = await SDK.save('saveData', SaveSchema.sanitizeSave(this.data));
+    if (!ok) throw new Error('Persistence failed: both local and cloud storage unavailable');
   }
 
   // Pull persistent progress out of the current player (called at stage

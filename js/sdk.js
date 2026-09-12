@@ -15,6 +15,8 @@ const SDK = (() => {
     ? testConfig.adStartTimeoutMs : 15000;
   const AD_PLAYBACK_TIMEOUT_MS = Number.isFinite(testConfig.adPlaybackTimeoutMs)
     ? testConfig.adPlaybackTimeoutMs : 5 * 60 * 1000;
+  const INIT_TIMEOUT_MS = Number.isFinite(testConfig.initTimeoutMs)
+    ? testConfig.initTimeoutMs : 5000;
 
   let sdk = null;
   let initialized = false;
@@ -22,6 +24,8 @@ const SDK = (() => {
   let gameplayActive = false;
   let adInProgress = false;
 
+  let loadingRequested = false;
+  let pendingInit = null;
   // A complete save snapshot supersedes every older pending snapshot.
   const latestSnapshots = new Map();
   const cloudWriters = new Map();
@@ -113,16 +117,57 @@ const SDK = (() => {
 
       const candidate = window.CrazyGames && window.CrazyGames.SDK;
       if (!candidate) return false;
-      try {
-        await candidate.init();
+
+      // Reuse one underlying candidate.init() across all concurrent callers
+      // so overlapping timed-out attempts cannot spawn duplicate inits.
+      if (!pendingInit) {
+        pendingInit = Promise.resolve().then(() => candidate.init()).then(() => true);
+      }
+
+      const initResult = await settleSoon(pendingInit, false, INIT_TIMEOUT_MS);
+
+      if (initResult) {
         sdk = candidate;
         initialized = true;
+        // If gameplay was started before init completed (e.g. init was still
+        // pending when the player entered the arena), replay gameplayStart so
+        // the portal SDK receives the lifecycle notification belatedly.
+        if (gameplayActive) {
+          try { sdk.game?.gameplayStart(); } catch (_) {}
+        }
+        // Replay loadingStart if it was requested before activation.
+        if (loadingRequested) {
+          try { sdk.game?.loadingStart(); } catch (_) {}
+        }
         return true;
-      } catch (error) {
-        console.warn('CrazyGames SDK unavailable; using local fallback.', error);
+      }
+
+      // candidate.init either timed out or rejected. Register a late handler
+      // so an eventual late resolution can still activate the portal SDK and
+      // replay lifecycle events.
+      pendingInit.then((success) => {
+        if (success && !sdk) {
+          sdk = candidate;
+          initialized = true;
+          if (gameplayActive) {
+            try { sdk.game?.gameplayStart(); } catch (_) {}
+          }
+          if (loadingRequested) {
+            try { sdk.game?.loadingStart(); } catch (_) {}
+          }
+        }
+      }, () => {});
+
+      // Only clear the SDK reference when WE timed out — if a late handler
+      // from an earlier call already activated the SDK, leave it intact.
+      if (!initialized) {
+        console.warn('CrazyGames SDK init timed out or unavailable; using local fallback.');
         sdk = null;
         return false;
       }
+      // initialized was set by a late handler that fired before our timeout
+      // path could clear it — treat as success.
+      return true;
     })();
 
     try {
@@ -147,14 +192,16 @@ const SDK = (() => {
     gameplayActive = false;
     try { gameModule()?.gameplayStop(); } catch (_) {}
   }
-
   function loadingStart() {
+    loadingRequested = true;
     try { gameModule()?.loadingStart(); } catch (_) {}
   }
 
   function loadingStop() {
+    loadingRequested = false;
     try { gameModule()?.loadingStop(); } catch (_) {}
   }
+
 
   function happyTime() {
     try {
@@ -321,12 +368,13 @@ const SDK = (() => {
     return winner.payload;
   }
 
-  function save(key, value) {
+  async function save(key, value) {
     const envelope = makeEnvelope(key, value);
     const serialized = JSON.stringify(envelope);
-    localWriteEnvelope(key, envelope);
+    const localOk = localWriteEnvelope(key, envelope);
     latestSnapshots.set(key, { envelope, serialized, dirty: true });
-    return queueCloudEnvelope(key, envelope);
+    const cloudOk = await queueCloudEnvelope(key, envelope);
+    return localOk || cloudOk;
   }
 
   function requestAd(type, { onStarted, onFinished, onError } = {}) {

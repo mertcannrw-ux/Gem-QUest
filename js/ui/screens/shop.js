@@ -239,6 +239,13 @@
           x, y, w: cw, h: ch,
           onClick: () => game.buyShopUpgrade(u.id)
         });
+        UICore.semanticButton(ctx, {
+          name: `${u.name}, rank ${lvl} of ${u.max}, costs ${cost} coins`,
+          id: `shop:${u.id}`,
+          x, y, w: cw, h: ch,
+          disabled: !canAfford,
+          onActivate: () => game.buyShopUpgrade(u.id)
+        });
       }
     }
 

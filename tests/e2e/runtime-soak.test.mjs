@@ -8,7 +8,12 @@ async function bootGame(page) {
 }
 
 test('accelerated multi-stage gameplay does not crash or corrupt core state', async ({ page }) => {
-  test.setTimeout(120000);
+  // This executes 7,200 update frames plus hundreds of full canvas renders in
+  // one browser callback. Headless software rendering varies substantially
+  // across CI and desktop GPUs, so allow enough time for the intended soak
+  // coverage instead of turning render throughput into a flaky correctness
+  // failure.
+  test.setTimeout(180000);
   const pageErrors = [];
   page.on('pageerror', (error) => pageErrors.push(error.message));
   await bootGame(page);
@@ -55,7 +60,11 @@ test('accelerated multi-stage gameplay does not crash or corrupt core state', as
           }
 
           game.update(0.05);
-          if (frame % 15 === 0) game.render();
+          // The dedicated boss E2E test renders every final-phase encounter.
+          // This test is primarily a long simulation/state-corruption soak, so
+          // sample the expensive high-DPI canvas regularly instead of drawing
+          // hundreds of visually redundant frames in one synchronous callback.
+          if (frame % 60 === 0) game.render();
 
           if (game.fatalError) throw game.fatalError;
           const finite = [

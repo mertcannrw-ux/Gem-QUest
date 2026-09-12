@@ -19,11 +19,9 @@ const BASE = 'http://localhost:8080';
 async function dismissBoot(page) {
   const startBtn = page.locator('#boot-start');
   await expect(startBtn).toBeVisible({ timeout: 20000 });
-  // Dispatch click directly on boot screen via DOM
-  await page.evaluate(() => {
-    document.getElementById('boot-screen')?.click();
-  });
-  await page.waitForTimeout(1500);
+  await startBtn.click();
+  await expect(page.locator('#boot-screen')).toHaveClass(/hidden/);
+  await page.waitForTimeout(500);
 }
 
 /** Wait for the game to be ready (boot dismissed + game loop running). */
@@ -51,6 +49,27 @@ test.describe('Boot screen', () => {
     await page.goto(BASE);
     await dismissBoot(page);
     expect(errors).toEqual([]);
+  });
+
+  test('game container is inert and aria-hidden before boot dismissal, enabled after', async ({ page }) => {
+    await page.goto(BASE);
+    const startBtn = page.locator('#boot-start');
+    await expect(startBtn).toBeVisible({ timeout: 20000 });
+
+    // Before dismissal: game container must be hidden from assistive tech
+    const beforeInert = await page.locator('#game-container').getAttribute('inert');
+    const beforeAria = await page.locator('#game-container').getAttribute('aria-hidden');
+    expect(beforeInert, 'game-container has inert before boot dismissal').not.toBeNull();
+    expect(beforeAria, 'game-container has aria-hidden=true before boot dismissal').toBe('true');
+
+    // Dismiss the boot screen
+    await dismissBoot(page);
+
+    // After dismissal: inert and aria-hidden must be removed
+    const afterInert = await page.locator('#game-container').getAttribute('inert');
+    const afterAria = await page.locator('#game-container').getAttribute('aria-hidden');
+    expect(afterInert, 'game-container inert removed after boot dismissal').toBeNull();
+    expect(afterAria, 'game-container aria-hidden removed after boot dismissal').toBeNull();
   });
 });
 

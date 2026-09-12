@@ -36,6 +36,42 @@
       });
       ctx.restore();
     }
+
+    const dialogue = game.bossDialogue;
+    if (dialogue?.time > 0) {
+      const w = logicalWidth(ctx);
+      const h = logicalHeight(ctx);
+      const fadeIn = Math.min(1, (dialogue.maxTime - dialogue.time) * 4);
+      const fadeOut = Math.min(1, dialogue.time * 2.5);
+      const alpha = Math.min(fadeIn, fadeOut);
+      const boxW = Math.min(860, w - 120);
+      const x = w / 2 - boxW / 2;
+      const y = h - 142;
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      const grad = ctx.createLinearGradient(x, 0, x + boxW, 0);
+      grad.addColorStop(0, 'rgba(2,6,23,0)');
+      grad.addColorStop(.12, 'rgba(2,6,23,.9)');
+      grad.addColorStop(.88, 'rgba(2,6,23,.9)');
+      grad.addColorStop(1, 'rgba(2,6,23,0)');
+      ctx.fillStyle = grad;
+      ctx.fillRect(x, y, boxW, 92);
+      ctx.strokeStyle = dialogue.color;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(x + 80, y);
+      ctx.lineTo(x + boxW - 80, y);
+      ctx.stroke();
+      text(ctx, dialogue.speaker.toUpperCase(), w / 2, y + 24, {
+        align: 'center', font: '900 14px Trebuchet MS',
+        color: dialogue.color, stroke: '#020617', lineWidth: 5
+      });
+      text(ctx, `“${dialogue.line}”`, w / 2, y + 57, {
+        align: 'center', font: 'bold 19px Georgia, serif',
+        color: '#f8fafc', stroke: '#020617', lineWidth: 5
+      });
+      ctx.restore();
+    }
   }
 
   UIScreens.directorOverlay = drawDirectorOverlay;

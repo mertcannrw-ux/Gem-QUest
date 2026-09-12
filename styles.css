@@ -74,6 +74,7 @@ html, body {
 
 #boot-screen.hidden {
   opacity: 0;
+  visibility: hidden;
   pointer-events: none;
 }
 
@@ -203,6 +204,40 @@ html, body {
 @keyframes titlePulse {
   0%, 100% { transform: scale(1); }
   50% { transform: scale(1.03); }
+}
+
+/* Native accessibility layer aligned to the canvas. Controls stay visually
+ * transparent until keyboard focus, preserving the canvas as the only UI. */
+#semantic-ui {
+  position: absolute;
+  z-index: 20;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+#semantic-ui[hidden] { display: none; }
+
+.semantic-control {
+  position: absolute;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.semantic-control:focus-visible {
+  opacity: 1;
+  outline: 3px solid #67e8f9;
+  outline-offset: 2px;
+  background: rgba(9, 11, 23, .18);
+}
+
+.semantic-control[type="range"] {
+  appearance: none;
+  background: transparent;
 }
 
 /* ===== Touch controls (mobile fallback) ===== */

@@ -62,9 +62,7 @@
       const t = n > 1 ? (i / (n - 1) - 0.5) : 0;
       const a = baseAngle + t * spread;
       const crit = runtimeRandom(game).chance(s.critChance);
-      const isBoss = target.boss;
-      const dmg = s.damage * (1 + s.damageMult) * (crit ? s.critMult : 1)
-                * (isBoss ? 1 + s.bossDamage : 1);
+      const dmg = s.damage * (1 + s.damageMult) * (crit ? s.critMult : 1);
 
       // Determine projectile sprite id based on stats
       let kind = null;
@@ -85,6 +83,7 @@
         bounce: s.bounce,
         returnChance: s.returnChance,
         instantKill: s.instantKill,
+        bossDamage: s.bossDamage,
         owner: this,
         source: target,
         kind

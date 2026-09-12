@@ -64,9 +64,15 @@
   // Input
   Input.attachMouse(canvas);
   Input.attachTouch(canvas);
-  window.addEventListener('keydown', (e) =>
-    game.runGuarded('keyboard input', () => game.handleKey(e.key.toLowerCase()))
-  );
+  window.addEventListener('keydown', (e) => {
+    // Skip repeated keydown — state-changing game commands (Escape, Space, p)
+    // should fire only on the initial press. Movement is tracked in Input.poll.
+    if (e.repeat) return;
+    // Let native interactive elements (buttons, inputs) handle their own keys
+    // without forwarding to the game state machine.
+    if (Input.isInteractiveElement?.(document.activeElement)) return;
+    game.runGuarded('keyboard input', () => game.handleKey(e.key.toLowerCase()));
+  });
 
   // Click handlers receive logical-space coordinates
   game.onClick = function (e) {
@@ -86,12 +92,19 @@
   // the big "Start" button. Players can also click anywhere.
   if (bootSpinner) bootSpinner.style.display = 'none';
   if (bootText) bootText.style.display = 'none';
-  if (bootStart) bootStart.style.display = 'inline-block';
 
   // Auto-hide on first click anywhere on the boot screen.
   function dismissBoot() {
     if (bootScreen.classList.contains('hidden')) return;
     bootScreen.classList.add('hidden');
+    // Enable the game container for assistive technology — screen readers
+    // and keyboard navigation should now reach the game canvas and UI.
+    const gameContainer = document.getElementById('game-container');
+    if (gameContainer) {
+      gameContainer.inert = false;
+      gameContainer.removeAttribute('inert');
+      gameContainer.removeAttribute('aria-hidden');
+    }
     SDK.loadingStop();
     setTimeout(() => { bootScreen.style.display = 'none'; }, 500);
     // Also try to resume the audio context on the first user
@@ -105,14 +118,18 @@
   window.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' || e.key === ' ') dismissBoot();
   });
+  if (bootStart) bootStart.hidden = false;
 
   // Keep production state private. Local builds can opt into diagnostics.
   const debugHost = location.hostname === '127.0.0.1' || location.hostname === 'localhost';
   if (debugHost) window.__gemQuestDebug = { game };
 
   // Auto-pause when tab hidden (Crazy Games pauses for ads, but we
-  // should also pause when the tab is backgrounded to save CPU).
+  // should also pause when the tab is hidden to save CPU).
   document.addEventListener('visibilitychange', () => {
+    // Reset input state on visibility loss so stale keys/touches don't carry
+    // over when the player returns.
+    Input.resetAll();
     game.runGuarded('visibility change', () => {
       if (document.hidden && game.state === GAME_STATE.PLAYING) {
         game.transitionTo(GAME_STATE.PAUSED, { storePrevious: true });

@@ -86,10 +86,24 @@ class Player {
     this.dashDir = { x: 1, y: 0 };
     this.trailTimer = 0;
     this.tempestTimer = 0;
-  }
 
-  // Compute effective stats: base + shop + (items * stacks * rarity multiplier)
+    // Cached effective stats — fingerprint-based invalidation detects
+    // item changes without requiring explicit dirty-flag management.
+    this._statsFp = 0;
+    this._cachedStats = null;
+  }
+  // Compute effective stats: base + shop + (items * stacks)
   stats() {
+    // Lightweight fingerprint of current items (id hash + stack counts).
+    // Avoids the Object.assign + double-loop on cache hits without
+    // requiring explicit invalidation when items are set directly.
+    let fp = 0;
+    for (const id in this.items) {
+      fp ^= ((id.charCodeAt(0) || 0) * 31 + (this.items[id] || 0)) | 0;
+    }
+    if (fp === this._statsFp && this._cachedStats) return this._cachedStats;
+    this._statsFp = fp;
+
     const s = Object.assign({}, this.baseStats);
     // Shop
     for (const u of SHOP_UPGRADES) {
@@ -101,11 +115,11 @@ class Player {
       const it = ITEM_BY_ID[id];
       const n = this.items[id];
       if (!it) continue;
-      const mult = RARITY[it.rarity.toUpperCase()].mult;
       for (const k in it.stats) {
-        s[k] = (s[k] || 0) + it.stats[k] * n * mult;
+        s[k] = (s[k] || 0) + it.stats[k] * n;
       }
     }
+    this._cachedStats = s;
     return s;
   }
 
@@ -183,6 +197,7 @@ class Player {
     const it = ITEM_BY_ID[id];
     if (!it) return false;
     this.items[id] = Math.min(it.maxStacks, (this.items[id] || 0) + 1);
+    this._statsFp = 0; // invalidate fingerprint cache
     return it && this.items[id] >= it.maxStacks;
   }
 
@@ -308,10 +323,7 @@ class Player {
       const t = n > 1 ? (i / (n - 1) - 0.5) : 0;
       const a = baseAngle + t * spread;
       const crit = runtimeRandom(this.game).chance(s.critChance);
-      const isBoss = target.boss;
-      const dmg = s.damage * (1 + s.damageMult) * (crit ? s.critMult : 1)
-                * (isBoss ? 1 + s.bossDamage : 1);
-
+      const dmg = s.damage * (1 + s.damageMult) * (crit ? s.critMult : 1);
       // Determine projectile sprite id based on stats
       let kind = null;
       // poison via kind: 'poison' flag on Projectile
@@ -330,6 +342,7 @@ class Player {
         burn: s.burn, burnDur: s.burnDur,
         bounce: s.bounce,
         returnChance: s.returnChance,
+        bossDamage: s.bossDamage,
         instantKill: s.instantKill,
         owner: this,
         source: target,

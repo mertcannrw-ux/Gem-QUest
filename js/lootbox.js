@@ -107,7 +107,7 @@ class Lootbox {
     // Show three full item cards rising from the chest.
     const w = 96, h = 132;
     const gap = 14;
-    const total = w * 3 + gap * 2;
+    const total = w * this.choices.length + gap * (this.choices.length - 1);
     const startX = cam.vw / 2 - total / 2;
     const targetY = cam.vh / 2 - h / 2;
     const cardY = targetY - (1 - a) * 40;
@@ -171,6 +171,11 @@ class Lootbox {
       ctx.fillStyle = r.color;
       ctx.font = 'bold 9px sans-serif';
       ctx.fillText(r.name.toUpperCase(), cx, cardY + 116);
+      // Register semantic control for keyboard/AT access
+      if (globalThis.UICore) {
+        globalThis.UICore.semanticChoice(ctx, cx - w / 2, cardY, w, h, it, i,
+          () => this.pick(i));
+      }
     }
     // Hint
     if (a > 0.9) {

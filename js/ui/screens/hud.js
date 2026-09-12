@@ -124,6 +124,14 @@
         drawSkullIcon(ctx, bx + bw + 8, by + bh / 2 - 8, 2);
         text(ctx, boss.name, w / 2, by + bh / 2,
           { align: 'center', baseline: 'middle', font: 'bold 14px sans-serif', stroke: '#000' });
+        const phase = boss.encounter;
+        if (phase) {
+          text(ctx, `PHASE ${phase.phase}  •  ${phase.phaseName}`,
+            w / 2, by + bh + 17, {
+              align: 'center', font: '900 11px Trebuchet MS',
+              color: phase.profile.color, stroke: '#020617', lineWidth: 4
+            });
+        }
       }
     }
 

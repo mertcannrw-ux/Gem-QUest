@@ -204,6 +204,8 @@
           { align: 'center', font: 'bold 12px sans-serif', color: r.color });
       }
       UICore.choices.push({ rect: [cx, cardY, cw, ch], index: i });
+      UICore.semanticChoice(ctx, cx, cardY, cw, ch, it, i,
+        () => GAME_STATE_HANDLERS[GAME_STATE.LEVEL_UP].click(game, cx + cw / 2, cardY + ch / 2));
     }
   }
 

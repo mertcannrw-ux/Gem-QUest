@@ -185,11 +185,14 @@ class ParticleSystem {
         if (Sprite.has(this.spriteId[i])) {
           const s = Sprite.get(this.spriteId[i]);
           const sc = this.size[i] || 1;
+          const w = s.w, h = s.h;
           ctx.save();
           ctx.translate(sx, sy);
           if (this.rotation[i]) ctx.rotate(this.rotation[i]);
           ctx.scale(sc, sc);
-          ctx.drawImage(s.image, -s.w / 2, -s.h / 2);
+          // Apply sprite tinted to the particle's color via cached alpha mask
+          const tc = Sprite.tinted(this.spriteId[i], c) || s.image;
+          ctx.drawImage(tc, -w / 2, -h / 2);
           ctx.restore();
         }
       }

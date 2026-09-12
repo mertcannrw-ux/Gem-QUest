@@ -48,23 +48,23 @@ const ENEMIES = {
 
   // Bosses
   boss_treant: {
-    id: 'boss_treant', name: 'Ancient Treant', color: '#16a34a', outline: '#14532d',
-    size: 56, hp: 800, speed: 30, dmg: 20, xp: 0, coin: 50,
+    id: 'boss_treant', name: 'Elderheart, the Worldroot', color: '#16a34a', outline: '#14532d',
+    size: 76, renderScale: 1.55, hp: 1100, speed: 30, dmg: 20, xp: 0, coin: 50,
     ai: 'boss_treant', boss: true, waves: 99, audioMaterial: 'stone'
   },
   boss_golem: {
-    id: 'boss_golem', name: 'Crystal Golem', color: '#a855f7', outline: '#581c87',
-    size: 56, hp: 1200, speed: 25, dmg: 25, xp: 0, coin: 100,
+    id: 'boss_golem', name: 'Axiom, the Prismatic Colossus', color: '#a855f7', outline: '#581c87',
+    size: 80, renderScale: 1.62, hp: 1650, speed: 25, dmg: 25, xp: 0, coin: 100,
     ai: 'boss_golem', boss: true, waves: 99, audioMaterial: 'crystal'
   },
   boss_vampire: {
-    id: 'boss_vampire', name: 'Vampire Lord', color: '#9f1239', outline: '#4c0519',
-    size: 60, hp: 1800, speed: 50, dmg: 30, xp: 0, coin: 200,
+    id: 'boss_vampire', name: 'Lord Sanguin, the Deathless', color: '#9f1239', outline: '#4c0519',
+    size: 72, renderScale: 1.55, hp: 2350, speed: 50, dmg: 30, xp: 0, coin: 200,
     ai: 'boss_vampire', boss: true, waves: 99, audioMaterial: 'flesh'
   },
   boss_dragon: {
-    id: 'boss_dragon', name: 'Elder Dragon', color: '#dc2626', outline: '#7f1d1d',
-    size: 70, hp: 3000, speed: 40, dmg: 40, xp: 0, coin: 500,
+    id: 'boss_dragon', name: 'Vharax, Sovereign of Cinders', color: '#dc2626', outline: '#7f1d1d',
+    size: 145, renderScale: 2.35, hp: 5200, speed: 44, dmg: 42, xp: 0, coin: 500,
     ai: 'boss_dragon', boss: true, waves: 99, audioMaterial: 'dragon'
   }
 };

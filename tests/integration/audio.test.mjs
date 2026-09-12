@@ -28,6 +28,7 @@ const PUBLIC_METHODS = [
   'getCriticalCueBoost', 'setMusicCandidate', 'getMusicCandidate',
   'getMusicCandidates', 'hit', 'kill', 'shoot', 'shootBig', 'levelUp',
   'coin', 'coinLot', 'explosion', 'hurt', 'select', 'deny', 'bossSpawn',
+  'bossVoice', 'bossPhase', 'bossImpact',
   'worldEvent', 'eventImpact', 'riftTeleport', 'eventCollect', 'eventAttune',
   'eventComplete', 'lootboxOpen', 'victory', 'play', 'impact', 'enemyDeath',
   'weaponFire', 'enemyAttack', 'danger', 'pickup', 'dash', 'reward'

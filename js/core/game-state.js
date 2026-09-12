@@ -12,7 +12,7 @@
  * original `game.js` branches and re-scoped to take `game` as the first arg.
  */
 
-/** @typedef {import('./types.js').GameState} GameState */
+/** @typedef {import('../types.js').GameState} GameState */
 
 /** @type {Readonly<Record<string, GameState>>} */
 const GAME_STATE = Object.freeze({
@@ -20,6 +20,7 @@ const GAME_STATE = Object.freeze({
   HELP: 'help',
   SETTINGS: 'settings',
   PLAYING: 'playing',
+  BOSS_INTRO: 'bossintro',
   LEVEL_UP: 'levelup',
   STAGE_COMPLETE: 'stagecomplete',
   SHOP: 'shop',
@@ -95,13 +96,25 @@ const GAME_STATE_HANDLERS = {
 
       game.stage.update(dt, game);
 
+      // stage.update may transition to BOSS_INTRO or another state;
+      // bail out so the newly spawned boss/hostiles don't get a combat tick.
+      if (game.state !== GAME_STATE.PLAYING) return;
+
       // Only update the enemies that existed when this phase began. Some AI
       // behaviours summon into the same array; letting a growing collection
       // extend its own iteration can create an unbounded same-frame cascade.
+      // Cache player's enemySlow once per frame to avoid per-enemy stats() allocation
+      game._cachedEnemySlow = game.player && typeof game.player.stats === 'function' ? Utils.clamp(game.player.stats().enemySlow, 0, 0.8) : 0;
       const enemyCount = game.enemies.length;
-      for (let i = 0; i < enemyCount; i++) game.enemies[i].update(dt, game);
+      // Freeze hostile combat while a lootbox awaits player choice
+      const lootboxChoiceOpen = game.lootboxes.some(
+        lb => lb.opened && lb._picked < 0 && lb.choices && lb.choices.length > 0
+      );
+      if (!lootboxChoiceOpen) {
+        for (let i = 0; i < enemyCount; i++) game.enemies[i].update(dt, game);
+        for (const p of game.enemyProjectiles) p.update(dt, game);
+      }
       for (const p of game.projectiles) p.update(dt, game);
-      for (const p of game.enemyProjectiles) p.update(dt, game);
       for (const lb of game.lootboxes) lb.update(dt, game);
       game.world.compactDeadEntities();
       if (game.completeStageIfReady()) {
@@ -245,6 +258,44 @@ const GAME_STATE_HANDLERS = {
       if (k === 'escape' || k === 'p') {
         game.resume();
       }
+    }
+  },
+
+  [GAME_STATE.BOSS_INTRO]: {
+    // Freeze combat, show cinematic title sequence, then transition to PLAYING
+    update(game, dt) {
+      if (game._cinematicTimer != null) {
+        game._cinematicTimer -= dt;
+      }
+      // Aim camera toward the boss
+      const boss = game.enemies.find(e => e.boss);
+      if (boss) {
+        const tx = boss.x - game.vw / 2;
+        const ty = boss.y - game.vh / 2;
+        game.cam.x = Utils.lerp(game.cam.x, tx, 0.08);
+        game.cam.y = Utils.lerp(game.cam.y, ty, 0.08);
+      }
+      // Update particles but freeze all combat
+      game.particles.update(dt);
+      // Transition to normal combat when cinematic expires
+      if (game._cinematicTimer != null && game._cinematicTimer <= 0) {
+        game._cinematicTimer = null;
+        game.transitionTo(GAME_STATE.PLAYING);
+      }
+    },
+    render(game, ctx) {
+      UI.drawHUD(ctx, game);
+      if (typeof BossCinematic !== 'undefined') {
+        BossCinematic.render(ctx, game);
+      }
+    },
+    click(game, mx, my) {
+      // Skip cinematic on click
+      game._cinematicTimer = 0;
+    },
+    key(game, k) {
+      // Skip cinematic on any key press
+      game._cinematicTimer = 0;
     }
   }
 };

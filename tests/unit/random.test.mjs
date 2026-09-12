@@ -76,3 +76,49 @@ test('production random streams have independent internal state', () => {
 
   assert.equal(values[0], values[1]);
 });
+
+test('environmentHash(-3558, 1473, 33) produces deterministic output in [0,1)', () => {
+  const ctx = loadScripts(['js/core/random.js']);
+  const hash = vm.runInContext('environmentHash(-3558, 1473, 33)', ctx);
+  // Max 32-bit unsigned value — exercises the new /2^32 divisor
+  assert.equal(hash, 0xFFFFFFFF);
+  const result = vm.runInContext('environmentRandom(-3558, 1473, 33)', ctx);
+  assert.ok(result >= 0 && result < 1);
+  // With the old divisor (2^32-1) this would be 1; now it's strictly < 1
+  assert.notEqual(result, 1);
+});
+
+test('runtimeRandom falls back safely on a partial injected stream (has range but no next)', () => {
+  const ctx = loadScripts(['js/core/random.js']);
+  const result = vm.runInContext(`(() => {
+    const partial = {
+      simulationRandom: {
+        range() { return 42; },
+        int() { return 99; },
+        chance() { return true; },
+        pick() { return 'x'; }
+      }
+    };
+    const r = runtimeRandom(partial);
+    return { next: r.next(), range: r.range(1, 2), chance: r.chance(0.5) };
+  })()`, ctx);
+  // Falls back to production -> real [0,1) values
+  assert.ok(result.next >= 0 && result.next < 1);
+  assert.ok(result.range >= 1 && result.range < 2);
+  assert.equal(typeof result.chance, 'boolean');
+});
+
+test('environmentHash returns consistent values for known inputs', () => {
+  const ctx = loadScripts(['js/core/random.js']);
+  const results = vm.runInContext(`
+    [environmentHash(0, 0, 0),
+     environmentHash(1, 0, 0),
+     environmentHash(0, 1, 0),
+     environmentHash(0, 0, 1)]
+  `, ctx);
+  // Sanity: different inputs produce different outputs (practically zero collisions)
+  assert.ok(results.every(v => typeof v === 'number' && v >= 0 && v <= 0xFFFFFFFF));
+  assert.notEqual(results[0], results[1]);
+  assert.notEqual(results[0], results[2]);
+  assert.notEqual(results[0], results[3]);
+});

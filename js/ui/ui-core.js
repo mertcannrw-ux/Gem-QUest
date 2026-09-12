@@ -15,7 +15,112 @@
   const choices = []; // level-up choices this frame
   const lootboxes = []; // open lootboxes this frame
 
-  function clearButtons() { buttons.length = 0; choices.length = 0; lootboxes.length = 0; }
+  // The canvas remains the sole visual UI. This parallel registry is mirrored
+  // into transparent native controls so keyboard and assistive-technology
+  // users receive the same actions and state without a second rendered UI.
+  const semanticControls = [];
+  let semanticSyncPending = false;
+
+  function semanticKey(control, occurrence) {
+    const base = control.id || `${control.kind}:${control.name}`;
+    return `${base}:${occurrence}`;
+  }
+
+  function scheduleSemanticSync() {
+    if (semanticSyncPending || typeof document === 'undefined') return;
+    semanticSyncPending = true;
+    Promise.resolve().then(() => {
+      semanticSyncPending = false;
+      syncSemanticOverlay();
+    });
+  }
+
+  function registerSemantic(control) {
+    semanticControls.push(control);
+  }
+
+  function applySemanticControl(element, control) {
+    element.setAttribute('aria-label', control.name);
+    element.disabled = Boolean(control.disabled);
+    element.style.left = `${control.x / control.logicalWidth * 100}%`;
+    element.style.top = `${control.y / control.logicalHeight * 100}%`;
+    element.style.width = `${control.w / control.logicalWidth * 100}%`;
+    element.style.height = `${control.h / control.logicalHeight * 100}%`;
+
+    if (control.kind === 'slider') {
+      element.value = String(Math.round(control.value * 100));
+      element.setAttribute('aria-valuetext', `${Math.round(control.value * 100)}%`);
+      element.oninput = () => control.onChange(Number(element.value) / 100);
+      element.onclick = null;
+    } else {
+      if (control.pressed === undefined) element.removeAttribute('aria-pressed');
+      else element.setAttribute('aria-pressed', String(control.pressed));
+      element.onclick = () => {
+        if (control.disabled) return;
+        Audio.select();
+        control.onActivate();
+      };
+      element.oninput = null;
+    }
+  }
+
+  function syncSemanticOverlay() {
+    const overlay = document.getElementById('semantic-ui');
+    if (!overlay) return;
+    const canvas = document.getElementById('game-canvas');
+    if (canvas) {
+      overlay.style.width = canvas.style.width || `${canvas.clientWidth}px`;
+      overlay.style.height = canvas.style.height || `${canvas.clientHeight}px`;
+    }
+
+    const previousFocusKey = document.activeElement?.dataset?.semanticKey;
+    const existing = new Map(Array.from(overlay.children, (element) => [element.dataset.semanticKey, element]));
+    const occurrences = new Map();
+    const activeKeys = new Set();
+
+    for (const control of semanticControls) {
+      const base = control.id || `${control.kind}:${control.name}`;
+      const occurrence = occurrences.get(base) || 0;
+      occurrences.set(base, occurrence + 1);
+      const key = semanticKey(control, occurrence);
+      activeKeys.add(key);
+
+      const tag = control.kind === 'slider' ? 'input' : 'button';
+      let element = existing.get(key);
+      if (!element || element.localName !== tag) {
+        if (element) element.remove();
+        element = document.createElement(tag);
+        element.dataset.semanticKey = key;
+        element.className = 'semantic-control';
+        if (tag === 'button') element.type = 'button';
+        else {
+          element.type = 'range';
+          element.min = '0';
+          element.max = '100';
+          element.step = '1';
+        }
+        overlay.appendChild(element);
+      }
+      applySemanticControl(element, control);
+    }
+
+    for (const [key, element] of existing) {
+      if (!activeKeys.has(key)) element.remove();
+    }
+    if (previousFocusKey) {
+      const focused = Array.from(overlay.children).find((element) => element.dataset.semanticKey === previousFocusKey);
+      if (focused && document.activeElement !== focused) focused.focus({ preventScroll: true });
+    }
+    overlay.hidden = semanticControls.length === 0;
+  }
+
+  function clearButtons() {
+    buttons.length = 0;
+    choices.length = 0;
+    lootboxes.length = 0;
+    semanticControls.length = 0;
+    scheduleSemanticSync();
+  }
 
   // Clears the frame-local registries and optionally stores the latest pointer
   // position in logical coordinates for hit testing.
@@ -70,6 +175,12 @@
       color: disabled ? '#94a3b8' : (opts.color || '#fff')
     });
     if (!disabled) buttons.push({ x, y, w, h, onClick, hover });
+    registerSemantic({
+      kind: 'button', name: opts.accessibleName || label, id: opts.semanticId,
+      x, y, w, h, logicalWidth: logicalWidth(ctx), logicalHeight: logicalHeight(ctx),
+      disabled, pressed: opts.pressed,
+      onActivate: onClick
+    });
   }
 
   function pointInRect(p, x, y, w, h) {
@@ -181,6 +292,12 @@
       onClick: (mx) => game.setSetting(id, Utils.clamp((mx - x) / w, 0, 1)),
       slider: true
     });
+    registerSemantic({
+      kind: 'slider', name: label, id: `setting:${id}`,
+      x, y: trackY - 14, w, h: 36,
+      logicalWidth: logicalWidth(ctx), logicalHeight: logicalHeight(ctx), value,
+      onChange: (nextValue) => game.setSetting(id, nextValue)
+    });
   }
 
   function toggle(ctx, game, x, y, w, label, id, enabled, color = '#67e8f9') {
@@ -200,6 +317,11 @@
     ctx.fillStyle = '#fff';
     ctx.beginPath(); ctx.arc(tx + (enabled ? 33 : 11), ty + 11, 8, 0, Math.PI * 2); ctx.fill();
     buttons.push({ x, y, w, h, onClick: () => game.setSetting(id, !enabled) });
+    registerSemantic({
+      kind: 'button', name: label, id: `setting:${id}`,
+      x, y, w, h, logicalWidth: logicalWidth(ctx), logicalHeight: logicalHeight(ctx),
+      pressed: enabled, onActivate: () => game.setSetting(id, !enabled)
+    });
   }
 
   function wrapText(ctx, text, maxWidth) {
@@ -347,6 +469,25 @@
     return `+${Math.round(total * 100)}%`;
   }
 
+  function semanticButton(ctx, config) {
+    registerSemantic({
+      kind: 'button', disabled: false,
+      logicalWidth: logicalWidth(ctx), logicalHeight: logicalHeight(ctx),
+      ...config
+    });
+  }
+
+  function semanticChoice(ctx, x, y, w, h, item, index, onActivate) {
+    const rarity = item.rarity ? `${item.rarity} ` : '';
+    const description = item.desc ? `. ${item.desc}` : '';
+    semanticButton(ctx, {
+      name: `${rarity}${item.name}${description}`,
+      id: `level-up:${item.id || index}`,
+      x, y, w, h,
+      onActivate
+    });
+  }
+
   // ===== Click dispatch =====
   function handleClick(mx, my) {
     for (const b of buttons) {
@@ -375,7 +516,8 @@
     drawCoinIcon, drawSkullIcon, drawLockIcon,
     slider, toggle, wrapText, abilitySlot,
     forgePath, drawForgeIcon, forgeTheme, upgradeValue,
-    handleClick
+    handleClick,
+    semanticButton, semanticChoice, syncSemanticOverlay,
   };
   const UIScreens = {};
   // Bridge to the shared global object so both the browser (window ===

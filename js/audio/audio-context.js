@@ -37,6 +37,7 @@ let listener = { x: 0, y: 0, viewportWidth: 1280 };
 let ambienceTimer = 0;
 let pickupChain = { time: -Infinity, step: 0 };
 const eventTimes = new Map();
+let duckState = { deadline: 0, amount: 0 };
 const activeVoices = [];
 const MAX_VOICES = 42;
 
@@ -111,15 +112,24 @@ function resume() {
   }
   return ready;
 }
+function cancelSpeech() {
+  try {
+    if (typeof window !== 'undefined' && window.speechSynthesis && window.speechSynthesis.cancel) {
+      window.speechSynthesis.cancel();
+    }
+  } catch (_) {}
+}
 
 function setMuted(m) {
   muted = Boolean(m);
+  if (muted) cancelSpeech();
   if (master && ctx) master.gain.setTargetAtTime(muted ? 0 : volume, ctx.currentTime, 0.03);
 }
 function isMuted() { return muted; }
 function getVolume() { return volume; }
 function setVolume(value) {
   volume = Utils.clamp(Number(value) || 0, 0, 1);
+  if (volume === 0) cancelSpeech();
   if (master && !muted && ctx) master.gain.setTargetAtTime(volume, ctx.currentTime, 0.03);
 }
 function getMusicVolume() { return musicVolume; }
@@ -130,6 +140,7 @@ function setMusicVolume(value) {
 function getSfxVolume() { return sfxVolume; }
 function setSfxVolume(value) {
   sfxVolume = Utils.clamp(Number(value) || 0, 0, 1);
+  if (sfxVolume === 0) cancelSpeech();
   if (sfxMaster && ctx) sfxMaster.gain.setTargetAtTime(sfxVolume, ctx.currentTime, 0.03);
 }
 function getAmbienceVolume() { return ambienceVolume; }

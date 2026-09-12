@@ -16,7 +16,7 @@
     <div class="boot-sub">ARENA SURVIVAL</div>
     <div class="boot-spinner"></div>
     <div class="boot-text" id="boot-text">Loading...</div>
-    <button class="boot-start" id="boot-start" type="button">CLICK TO START</button>
+    <button class="boot-start" id="boot-start" type="button" hidden>CLICK TO START</button>
   </div>
 
   <div id="fatal-screen" class="hidden" role="alert" aria-live="assertive">
@@ -29,8 +29,9 @@
   </div>
 
   <!-- The game container. Sized to a 16:9 letterbox inside the viewport. -->
-  <div id="game-container">
-    <canvas id="game-canvas" tabindex="0"></canvas>
+  <div id="game-container" inert aria-hidden="true">
+    <canvas id="game-canvas" tabindex="-1" aria-label="Gem Quest game"></canvas>
+    <div id="semantic-ui" role="group" aria-label="Game controls"></div>
     <div id="touch-controls" class="hidden">
       <div id="touch-joystick"><div id="touch-stick"></div></div>
     </div>
@@ -93,6 +94,8 @@
   <script defer src="js/combat/projectile.js"></script>
   <script defer src="js/combat/enemy.js"></script>
   <script defer src="js/combat/enemy-ai.js"></script>
+  <script defer src="js/combat/boss-encounter.js"></script>
+  <script defer src="js/combat/boss-cinematic.js"></script>
   <script defer src="js/combat/boss-ai.js"></script>
   <script defer src="js/combat/player-combat.js"></script>
   <script defer src="js/combat/drone-system.js"></script>

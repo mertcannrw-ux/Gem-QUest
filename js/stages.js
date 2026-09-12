@@ -65,12 +65,21 @@ class StageManager {
       for (let i = 0; i < wave.spawns.length; i++) {
         const s = wave.spawns[i];
         this.spawnTimers[i] -= dt;
-        if (this.spawnTimers[i] <= 0) {
-          if (s.count === -1 || (this.spawnsDone[i] || 0) < s.count) {
+        // Consume multiple due intervals when a large dt spans them,
+        // advancing by interval rather than resetting to preserve
+        // negative overshoot for accurate long-term cadence.
+        if (s.interval > 0) {
+          while (this.spawnTimers[i] <= 1e-10) {
+            const done = this.spawnsDone[i] || 0;
+            if (s.count !== -1 && done >= s.count) break;
             this.spawnEnemy(s.type);
-            this.spawnsDone[i] = (this.spawnsDone[i] || 0) + 1;
+            this.spawnsDone[i] = done + 1;
+            this.spawnTimers[i] += s.interval;
           }
-          this.spawnTimers[i] = s.interval;
+        }
+        // Finite count exhausted: keep timer at zero.
+        if (s.count !== -1 && (this.spawnsDone[i] || 0) >= s.count) {
+          this.spawnTimers[i] = 0;
         }
       }
 
@@ -136,14 +145,21 @@ class StageManager {
     }
     const a = -Math.PI / 2; // above player
     const d = 200;
-    this.game.enemies.push(new Enemy(
+    const boss = new Enemy(
       type,
       p.x + Math.cos(a) * d,
       p.y + Math.sin(a) * d,
       runtimeRandom(this.game)
-    ));
+    );
+    this.game.enemies.push(boss);
+    BossEncounter.initialize(boss, this.game);
     Audio.play?.('boss.spawn', { x: p.x, y: p.y - 200 });
-    this.game.shake.trigger(6);
+    this.game.shake.trigger(type === 'boss_dragon' ? 12 : 8);
+    // Start cinematic intro before combat becomes interactive
+    const profile = BOSS_PROFILES[type];
+    this.game._cinematicTimer = profile?.cinematicDuration ?? 3.0;
+    this.game.transitionTo(GAME_STATE.BOSS_INTRO);
+    return boss;
   }
 
 }

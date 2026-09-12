@@ -100,7 +100,10 @@ test('Audio.play routes each event to the correct semantic bus', () => {
     ['pickup.coin', 'pickup'],
     ['pickup.gem', 'pickup'],
     ['reward.reveal', 'pickup'],
-    ['boss.spawn', 'boss']
+    ['boss.spawn', 'boss'],
+    ['boss.voice', 'boss'],
+    ['boss.phase', 'boss'],
+    ['boss.impact', 'boss']
   ];
 
   for (const [event, expectedBus] of cases) {

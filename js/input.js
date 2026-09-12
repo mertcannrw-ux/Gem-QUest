@@ -17,6 +17,7 @@ const Input = (() => {
   const justPressed = new Set();
   const mouse = { x: 0, y: 0, down: false, worldX: 0, worldY: 0 };
   const touchMoveKeys = new Set();
+  const attackTouches = new Set();
 
   function refreshKeys() {
     keys.clear();
@@ -37,26 +38,63 @@ const Input = (() => {
     'z', 'q' // AZERTY
   ]);
 
+  function isInteractiveElement(el) {
+    if (!el) return false;
+    const tag = el.tagName;
+    return tag === 'BUTTON' || tag === 'INPUT' || tag === 'TEXTAREA' ||
+      tag === 'SELECT' || tag === 'A' || el.isContentEditable;
+  }
+  
   window.addEventListener('keydown', (e) => {
     const k = e.key.toLowerCase();
-    if (!keyboardKeys.has(k)) justPressed.add(k);
+    // Never register keys from native interactive semantic controls (buttons,
+    // inputs, selects, etc.) so the game does not see Space / Enter key state
+    // during legitimate button or form interactions.
+    if (isInteractiveElement(document.activeElement)) {
+      return;
+    }
+    // Ignore repeated keydown for state-changing commands (non-movement).
+    // Movement repeats are fine — they just re-assert a held direction.
+    if (!e.repeat) {
+      if (!keyboardKeys.has(k)) justPressed.add(k);
+    }
     keyboardKeys.add(k);
     refreshKeys();
-    // Prevent browser shortcuts from stealing our keys
+    // Prevent browser shortcuts from stealing our keys, but not when a
+    // native interactive element has focus (e.g. fatal-retry button).
     if (MOVE_KEYS.has(k) || k === ' ' || k === 'escape') {
-      e.preventDefault();
+      if (k === ' ' && isInteractiveElement(document.activeElement)) {
+        // Let the native element handle Space (click activation).
+      } else {
+        e.preventDefault();
+      }
     }
   });
   window.addEventListener('keyup', (e) => {
     keyboardKeys.delete(e.key.toLowerCase());
     refreshKeys();
   });
-  // Lose focus -> drop all keys (avoids stuck movement)
-  window.addEventListener('blur', () => {
+  
+  // Unified reset for blur, visibility loss, and any state that needs to
+  // clear all transient input state (keys, touches, joystick, attack).
+  function resetAll() {
     keyboardKeys.clear();
     touchMoveKeys.clear();
+    attackTouches.clear();
     refreshKeys();
-  });
+    if (stickEl) {
+      stickEl.style.left = '50%';
+      stickEl.style.top = '50%';
+      stickEl.style.transform = 'translate(-50%, -50%)';
+    }
+    joyId = null;
+    touchState.active = false;
+    touchState.origin = null;
+    mouse.down = false;
+  }
+  
+  // Lose focus -> reset all input (avoids stuck keys/joystick).
+  window.addEventListener('blur', resetAll);
 
   function setTouchMoveKey(key, pressed) {
     if (pressed) {
@@ -168,28 +206,43 @@ const Input = (() => {
     joystickEl.addEventListener('touchend', release);
     joystickEl.addEventListener('touchcancel', release);
 
-    // Right side of screen = attack
+    // Right side of screen = attack (tracked by touch identifier so unrelated
+    // touches cannot retarget or release the active attack).
     canvas.addEventListener('touchstart', (e) => {
-      const t = e.changedTouches[0];
-      const r = canvas.getBoundingClientRect();
-      if (t.clientX - r.left > r.width / 2) {
-        mouse.down = true;
-        const point = toLogicalPoint(canvas, t.clientX, t.clientY);
-        mouse.x = point.x;
-        mouse.y = point.y;
+      for (const t of e.changedTouches) {
+        const r = canvas.getBoundingClientRect();
+        if (t.clientX - r.left > r.width / 2) {
+          attackTouches.add(t.identifier);
+          mouse.down = true;
+          const point = toLogicalPoint(canvas, t.clientX, t.clientY);
+          mouse.x = point.x;
+          mouse.y = point.y;
+        }
       }
     });
     canvas.addEventListener('touchmove', (e) => {
-      const t = e.changedTouches[0];
-      const r = canvas.getBoundingClientRect();
-      if (t.clientX - r.left > r.width / 2) {
-        const point = toLogicalPoint(canvas, t.clientX, t.clientY);
-        mouse.x = point.x;
-        mouse.y = point.y;
+      for (const t of e.changedTouches) {
+        if (!attackTouches.has(t.identifier)) continue;
+        const r = canvas.getBoundingClientRect();
+        if (t.clientX - r.left > r.width / 2) {
+          const point = toLogicalPoint(canvas, t.clientX, t.clientY);
+          mouse.x = point.x;
+          mouse.y = point.y;
+        }
       }
     });
-    canvas.addEventListener('touchend', () => { mouse.down = false; });
-    canvas.addEventListener('touchcancel', () => { mouse.down = false; });
+    canvas.addEventListener('touchend', (e) => {
+      for (const t of e.changedTouches) {
+        attackTouches.delete(t.identifier);
+      }
+      if (attackTouches.size === 0) mouse.down = false;
+    });
+    canvas.addEventListener('touchcancel', (e) => {
+      for (const t of e.changedTouches) {
+        attackTouches.delete(t.identifier);
+      }
+      if (attackTouches.size === 0) mouse.down = false;
+    });
   }
 
   // Movement axis. Normalized to length 1 for diagonals.
@@ -208,7 +261,7 @@ const Input = (() => {
     mouse.worldX = mouse.x + cam.x;
     mouse.worldY = mouse.y + cam.y;
   }
-
+  
   function endFrame() {
     justPressed.clear();
   }
@@ -217,7 +270,8 @@ const Input = (() => {
     keys, justPressed, mouse, touchState,
     attachMouse, attachTouch,
     getMoveAxis, updateMouseWorld, endFrame, toLogicalPoint,
-    setTouchMoveKey, clearTouchMoveKeys,
+    setTouchMoveKey, clearTouchMoveKeys, resetAll,
+    isInteractiveElement,
     get _touchActive() { return touchState.active; },
     get _touchOrigin() { return touchState.origin; }
   };

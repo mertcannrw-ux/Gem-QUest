@@ -21,6 +21,7 @@ class EnvironmentSystem {
     this.environmentCellSize = 128;
     this.environmentPruneTimer = 2;
     this.environmentStageId = null;
+    this._lastPropsTime = -1;
   }
 
   resetEnvironment() {
@@ -268,6 +269,11 @@ class EnvironmentSystem {
   }
 
   environmentProps(stage) {
+    // Collect/filter/sort visible props at most once per logical frame.
+    // game.time is constant within a single render() call, so the second
+    // renderProps (foreground layer) reuses the same sorted buffer.
+    if (this._lastPropsTime === this.game.time) return this.environmentRenderBuffer;
+    this._lastPropsTime = this.game.time;
     const centerX = this.game.cam.x + this.game.vw * 0.5;
     const centerY = this.game.cam.y + this.game.vh * 0.5;
     const span = Math.max(this.game.vw, this.game.vh) * 0.55 + 220;

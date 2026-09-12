@@ -124,3 +124,25 @@ test('drawParallaxBack layers by stage id', () => {
     'cave parallax should draw glinting crystals'
   );
 });
+
+test('dragon embers remain visible after extended play time', () => {
+  const ctx = buildContext();
+  const emberCtx = makeCtx();
+  ctx.emberCtx = emberCtx;
+  // time=100 simulates well past 32 seconds where the raw modulo bug
+  // would push embers out of the viewport via negative remainder.
+  vm.runInContext(`
+    (() => {
+      const tr = new TerrainRenderer({ cam: {x:0,y:0}, time: 100, vw: 1280, vh: 720, stage: { index: 3 } });
+      tr.drawParallaxBack(emberCtx);
+    })();
+  `, ctx);
+  assert.ok(
+    emberCtx.__fillStyles.length > 0,
+    'dragon parallax should draw embers even at late game time'
+  );
+  const emberColor = emberCtx.__fillStyles.some((s) =>
+    typeof s === 'string' && s.includes('251,146,60')
+  );
+  assert.ok(emberColor, 'dragon embers must use the expected orange tone after 100s');
+});

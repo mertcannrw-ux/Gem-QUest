@@ -137,8 +137,10 @@ class TerrainRenderer {
     } else if (stageId === 'dragon') {
       // Embers rising
       for (let i = 0; i < 20; i++) {
-        const x = ((i * 173 + t * 30) % (this.game.vw + 200)) - 100;
-        const y = ((i * 67 - t * 40) % (this.game.vh + 200)) - 100;
+        const periodX = this.game.vw + 200;
+        const x = (((i * 173 + t * 30) % periodX) + periodX) % periodX - 100;
+        const periodY = this.game.vh + 200;
+        const y = (((i * 67 - t * 40) % periodY) + periodY) % periodY - 100;
         if (y < 0) continue;
         ctx.fillStyle = `rgba(251,146,60,${0.3 + Math.sin(t * 3 + i) * 0.2})`;
         ctx.beginPath();

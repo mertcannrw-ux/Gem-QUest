@@ -55,7 +55,7 @@ const ITEMS = [
   {
     id: 'bow', name: 'Longbow', icon: '🏹', rarity: 'rare',
     desc: '+25% projectile speed per stack', maxStacks: 4,
-    stats: { projectileSpeed: 0.25 }
+    stats: { projectileSpeed: 95 }
   },
   {
     id: 'pierce', name: 'Piercing Arrow', icon: '➳', rarity: 'rare',
@@ -217,6 +217,9 @@ function pickItemRewards(owned, count = 3, rng = Math.random) {
   }
   const picked = [];
   const used = new Set();
+  // Count unique available items so we can terminate early
+  const allPoolFlat = [...pool.common, ...pool.rare, ...pool.epic, ...pool.legendary];
+  const uniqueAvailable = new Set(allPoolFlat.map(it => it.id)).size;
   // Try to give one of each available rarity for diversity
   const rarities = ['legendary', 'epic', 'rare', 'common'];
   for (const r of rarities) {
@@ -225,20 +228,29 @@ function pickItemRewards(owned, count = 3, rng = Math.random) {
     let it = Utils.pick(pool[r], rng);
     let tries = 0;
     while (used.has(it.id) && tries < 10) { it = Utils.pick(pool[r], rng); tries++; }
-    if (!used.has(it.id)) {
+    // Fall back to linear scan when random retries all hit used items
+    if (used.has(it.id)) {
+      it = pool[r].find(({ id }) => !used.has(id));
+    }
+    if (it && !used.has(it.id)) {
       picked.push(it);
       used.add(it.id);
     }
   }
   // Fill the rest from the full pool
-  const allPool = [...pool.common, ...pool.rare, ...pool.epic, ...pool.legendary];
-  while (picked.length < count && allPool.length > 0) {
-    let it = Utils.pick(allPool, rng);
+  while (picked.length < count && used.size < uniqueAvailable && allPoolFlat.length > 0) {
+    let it = Utils.pick(allPoolFlat, rng);
     let tries = 0;
-    while (used.has(it.id) && tries < 10) { it = Utils.pick(allPool, rng); tries++; }
-    if (!used.has(it.id)) {
+    while (used.has(it.id) && tries < allPoolFlat.length) { it = Utils.pick(allPoolFlat, rng); tries++; }
+    // Fall back to linear scan when random retries all hit used items
+    if (used.has(it.id)) {
+      it = allPoolFlat.find(({ id }) => !used.has(id));
+    }
+    if (it && !used.has(it.id)) {
       picked.push(it);
       used.add(it.id);
+    } else {
+      break; // no more unique items available
     }
   }
   // Shuffle so rarity order isn't always the same

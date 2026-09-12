@@ -89,6 +89,12 @@
           x, y: by, w: sw, h: sh,
           onClick: () => game.startNewRun(i)
         });
+        UICore.semanticButton(ctx, {
+          name: `Stage ${i + 1}: ${STAGES[i].name}`,
+          id: `stage:${i}`,
+          x, y: by, w: sw, h: sh,
+          onActivate: () => game.startNewRun(i)
+        });
       } else {
         drawLockIcon(ctx, x + sw / 2 - 8, by + sh / 2 - 8, 2);
       }

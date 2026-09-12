@@ -37,10 +37,10 @@ class Enemy {
     this._wob = random.range(0, Math.PI * 2);
   }
 
-  takeDamage(amount, from, game) {
+  takeDamage(amount, from, game, damageKind) {
     if (!this.alive) return;
     const isPlayerAttack = from && from === game?.player;
-    const resistance = isPlayerAttack ? (this.projectileResistance || 0) : 0;
+    const resistance = isPlayerAttack && damageKind === 'projectile' ? (this.projectileResistance || 0) : 0;
     this.hp -= amount * (1 - resistance);
     this.flash = 0.08;
     if (this.hp > 0) {
@@ -61,6 +61,9 @@ class Enemy {
     if (game?.combat?.resolveEnemyDeath && !game.combat.isFinalizingDeath(this)) {
       game.combat.resolveEnemyDeath(this, killer);
       return;
+    }
+    if (this.boss && typeof BossEncounter !== 'undefined') {
+      BossEncounter.onDeath(this, game);
     }
     this.alive = false;
     Audio.play?.('enemy.death', {
@@ -176,7 +179,7 @@ class Enemy {
     this.angle = Math.atan2(dy, dx);
 
     const slow = 1 - this.slowAmount;
-    const enemySlow = p ? Utils.clamp(p.stats().enemySlow, 0, 0.8) : 0;
+    const enemySlow = game._cachedEnemySlow ?? (p ? Utils.clamp(p.stats().enemySlow, 0, 0.8) : 0);
     const effectiveSpeed = this.speed * slow * (1 - enemySlow);
     if (this.elite?.rare && this.updateRareMutation(dt, game, p, d)) return;
 
@@ -238,12 +241,16 @@ class Enemy {
     // Boss scripts and rare mutations can reposition directly. Resolve their
     // final position too, preventing any path from leaving an enemy in a tree.
     game.resolveEnvironmentCollision?.(this, this.size * 0.45);
+    // Recompute post-movement distance before contact
+    const px = this.x, py = this.y;
+    const ndx = p.x - px, ndy = p.y - py;
+    const postDist = Math.hypot(ndx, ndy) || 0.0001;
 
-    // Hit player on contact
-    if (d < this.size * 0.6 + p.r && this.dmg > 0) {
-      const wasInvulnerable = p.invuln > 0;
+    // Hit player on contact (using post-movement distance)
+    if (postDist < this.size * 0.6 + p.r && this.dmg > 0) {
+      const hpBefore = p.hp;
       p.takeDamage(this.dmg, this.x, this.y);
-      if (this.elite?.id === 'vampiric' && !wasInvulnerable) {
+      if (this.elite?.id === 'vampiric' && p.hp < hpBefore) {
         this.hp = Math.min(this.maxHp, this.hp + this.maxHp * 0.035);
       }
     }
@@ -407,7 +414,24 @@ class Enemy {
 
   render(ctx, cam) {
     const sx = this.x - cam.x, sy = this.y - cam.y;
-    if (sx < -100 || sy < -100 || sx > cam.vw + 100 || sy > cam.vh + 100) return;
+
+    // Compute sprite dims early for culling threshold
+    const sid = this.boss ? 'boss_' + this.id.replace('boss_', '') : this.id;
+    let sw = 0, sh = 0;
+    const spriteEntry = Sprite.has(sid) ? Sprite.get(sid) : null;
+    if (spriteEntry) {
+      const scale = this.boss ? (this.renderScale || 1.25) : 1.6 * (this.mutationScale || 1);
+      sw = spriteEntry.w * scale;
+      sh = spriteEntry.h * scale;
+    }
+    // Use half the scaled sprite extents as the culling margin (plus wobble buffer)
+    const marginX = Math.max(100, sw / 2 + 8);
+    const marginY = Math.max(100, sh / 2 + 8);
+    if (sx < -marginX || sy < -marginY || sx > cam.vw + marginX || sy > cam.vh + marginY) return;
+
+    if (this.boss && typeof BossEncounter !== 'undefined') {
+      BossEncounter.renderWorld(this, ctx, cam);
+    }
 
     // Mutation field and silhouette alterations are rendered around the body.
     if (this.elite) {
@@ -434,11 +458,10 @@ class Enemy {
     ctx.fill();
 
     // Sprite (use the enemy type as the sprite id; bosses use boss_ prefix)
-    const sid = this.boss ? 'boss_' + this.id.replace('boss_', '') : this.id;
-    if (Sprite.has(sid)) {
-      const scale = this.boss ? 1.0 : 1.6 * (this.mutationScale || 1);
-      const sw = Sprite.get(sid).w * scale;
-      const sh = Sprite.get(sid).h * scale;
+    if (spriteEntry) {
+      const scale = this.boss ? (this.renderScale || 1.25) : 1.6 * (this.mutationScale || 1);
+      sw = spriteEntry.w * scale;
+      sh = spriteEntry.h * scale;
       // Animate: wobble / bob based on time and per-enemy phase
       const wob = Math.sin((performance.now() * 0.004) + (this._wob || 0)) * 2;
       const ay = sy - sh / 2 + wob;
@@ -482,9 +505,13 @@ class Enemy {
       }
     } else {
       // Fallback: original simple render
+      const fallbackR = this.size * 0.5;
+      const marginY2 = Math.max(100, fallbackR + 8);
+      const marginX2 = marginY2;
+      if (sx < -marginX2 || sy < -marginY2 || sx > cam.vw + marginX2 || sy > cam.vh + marginY2) return;
       ctx.fillStyle = this.flash > 0 ? '#fff' : this.color;
       ctx.beginPath();
-      ctx.arc(sx, sy, this.size * 0.5, 0, Math.PI * 2);
+      ctx.arc(sx, sy, fallbackR, 0, Math.PI * 2);
       ctx.fill();
       ctx.strokeStyle = this.outline;
       ctx.lineWidth = 2;

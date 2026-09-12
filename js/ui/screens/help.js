@@ -23,7 +23,7 @@
       'Stack items for powerful synergies',
       'Upgrade between stages to grow stronger',
       '',
-      'Click anywhere to begin'
+      'Choose GOT IT to return'
     ];
     let y = 160;
     for (const l of lines) {
